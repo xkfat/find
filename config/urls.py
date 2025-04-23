@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/missing/', include('missing.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
+    
 ]

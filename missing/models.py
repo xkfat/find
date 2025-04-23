@@ -1,5 +1,5 @@
 from django.db import models
-from users.models import User
+from users.models import BasicUser
 from django.utils import timezone
 
 GENDER = [
@@ -25,13 +25,13 @@ class MissingPerson(models.Model):
     last_seen_location = models.CharField(max_length=100, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    reporter = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    reporter = models.ForeignKey(BasicUser, on_delete=models.SET_NULL, null=True, blank=True)
     status = models.CharField(max_length=50, choices=STATUS, default='searching')
     date_reported = models.DateTimeField(auto_now_add=True)
 
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.status})"
+        return f"{self.first_name} {self.last_name} "
     
     @property
     def current_age(self):

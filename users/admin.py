@@ -1,14 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User
+from .models import BasicUser
 
 
 
 admin.site.site_header = 'Admin Dashboard '
 admin.site.index_title = 'Hey admin! , Welcome Back :) '
-@admin.register(User)
+@admin.register(BasicUser)
 class CustomUserAdmin(UserAdmin):
-    model = User
+    model = BasicUser
 
     fieldsets = UserAdmin.fieldsets + (
         ('Custom Fields', {
