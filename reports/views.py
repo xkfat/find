@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from .models import Report
 from .serializers import ReportSerializer
 from missing.models import MissingPerson
-
+from notifications.models import Notification
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -56,3 +56,15 @@ def report_detail(request, id):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
     
+
+def update_report_status(request, report_id):
+    report = get_object_or_404(Report, id=report_id)
+    new_status = request.data.get('report_status')
+    
+    report.report_status = new_status
+    report.save()
+
+    Notification.objects.create(
+        receiver=report.user,
+        message=f"Your report for {report.missing_person} has been marked as {new_status}."
+    )
