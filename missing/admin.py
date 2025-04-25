@@ -5,8 +5,8 @@ from .models import MissingPerson
 @admin.register(MissingPerson)
 class MissingPersonAdmin(admin.ModelAdmin):
     list_display = ('id', 'first_name', 'last_name', 'status', 'reporter', 'date_reported')
-    search_fields = ('first_name', 'last_name', 'status', 'reporter__username')
-    list_filter = ('status', 'gender')
+    search_fields = ('first_name', 'last_name', 'status', 'reporter__username',)
+    list_filter = ('status', 'gender', 'date_reported', 'id')
     actions = ['change_to_found', 'change_to_under_investigation', 'change_to_searching']
     
     @admin.action(description='Change selected cases to found')

@@ -13,10 +13,6 @@ User = get_user_model()
 
 
 def send_notification(users, message, target_instance=None):
-    """
-    Create a Notification for one user or an iterable of users,
-    optionally pointing at a model instance via a GenericForeignKey.
-    """
     ct = None
     oid = None
     if target_instance is not None:

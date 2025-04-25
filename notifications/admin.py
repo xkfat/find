@@ -36,7 +36,7 @@ class NotificationsAdmin(admin.ModelAdmin):
 
     def view_message_button(self, obj):
         url = reverse('admin:notifications_notification_change', args=[obj.pk])
-        return format_html('<a class="button" href="{}">View Message</a>', url)
+        return format_html('<a class="button" href="{}">View</a>', url)
     
     view_message_button.short_description = 'Message'
     
