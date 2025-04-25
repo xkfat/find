@@ -54,3 +54,9 @@ def missing_person_detail(request, pk):
                             missing.delete()
                             return Response(status=status.HTTP_204_NO_CONTENT)
     
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_submitted_cases(request):
+       qs = MissingPerson.objects.filter(reporter=request.user).order_by('-date_reported')
+       serializer = MissingPersonSerializer(qs, many=True, context={'request': request})
+       return Response(serializer.data) 
