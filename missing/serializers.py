@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
 from .models import MissingPerson
+from django.utils import timezone
 
 
 class MissingPersonSerializer(serializers.ModelSerializer):
     current_age = serializers.ReadOnlyField()
+    reporter = serializers.ReadOnlyField(source='reporter.username')
 
     class Meta:
         model = MissingPerson
@@ -27,6 +27,9 @@ class MissingPersonSerializer(serializers.ModelSerializer):
             'date_reported',
         ]
         read_only_fields = ['id', 'current_age', 'reporter', 'date_reported']
-
-
-  
+        
+    def create(self, validated_data):
+        return MissingPerson.objects.create(
+            reporter=self.context['request'].user,
+            **validated_data
+        )

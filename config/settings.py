@@ -82,8 +82,14 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ]
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+           ],
+    'DEFAULT_PARSER_CLASSES': [                   
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ],
+    
     
 }
 # Database
@@ -138,3 +144,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.BasicUser'
+
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL  = "/media/"

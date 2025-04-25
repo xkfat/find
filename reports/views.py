@@ -56,7 +56,8 @@ def report_detail(request, id):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
     
-
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
 def update_report_status(request, report_id):
     report = get_object_or_404(Report, id=report_id)
     new_status = request.data.get('report_status')
@@ -66,5 +67,5 @@ def update_report_status(request, report_id):
 
     Notification.objects.create(
         receiver=report.user,
-        message=f"Your report for {report.missing_person} has been marked as {new_status}."
+        message=f" report for {report.missing_person} has been marked as {new_status}."
     )

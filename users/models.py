@@ -36,5 +36,8 @@ class BasicUser(AbstractUser):
  role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_USER)
 
 def __str__(self):
-     return f"self.username ({self.role})"
+     return f"{self.username} ({self.role})"
 
+def save(self, *args, **kwargs):
+        self.is_staff = (self.role == self.ROLE_ADMIN)
+        super().save(*args, **kwargs)

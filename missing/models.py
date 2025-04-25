@@ -1,6 +1,7 @@
 from django.db import models
 from users.models import BasicUser
 from django.utils import timezone
+from django.core.validators import  MinValueValidator
 
 GENDER = [
     ('M', 'Male'),
@@ -17,9 +18,9 @@ STATUS = [
 class MissingPerson(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    age = models.PositiveIntegerField()
+    age = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     gender = models.CharField(max_length=1, choices=GENDER)
-    photo = models.ImageField(upload_to='missing_photos/', null=False, blank=False)
+    photo = models.ImageField(upload_to='cases_photos/', null=False, blank=False)
     description = models.TextField(blank=True)
     last_seen_date = models.DateField()
     last_seen_location = models.CharField(max_length=100, blank=True)
