@@ -23,7 +23,7 @@ class MissingPerson(models.Model):
     photo = models.ImageField(upload_to='cases_photos/', null=False, blank=False)
     description = models.TextField(blank=True)
     last_seen_date = models.DateField()
-    last_seen_location = models.CharField(max_length=100, blank=True)
+    last_seen_location = models.CharField(max_length=200)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     reporter = models.ForeignKey(BasicUser, on_delete=models.SET_NULL, null=True, blank=True)

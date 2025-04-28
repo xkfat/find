@@ -36,7 +36,6 @@ def missing_person_detail(request, pk):
 
     if request.method == 'GET':
         serializer = MissingPersonSerializer(missing,context={'request': request})
-       # print(serializer.data)
         return Response(serializer.data)
     
     

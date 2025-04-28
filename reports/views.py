@@ -66,6 +66,9 @@ def update_report_status(request, report_id):
     report.save()
 
     Notification.objects.create(
-        receiver=report.user,
-        message=f" report for {report.missing_person} has been marked as {new_status}."
+        user=report.user,
+        message=f" report for {report.pk} status has changed to {new_status}."
     )
+    
+    serializer = ReportSerializer(report)
+    return Response(serializer.data, status=status.HTTP_200_OK)

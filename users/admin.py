@@ -43,7 +43,7 @@ class AccountAdmin(UserAdmin):
     )
 
     readonly_fields = (
-        'username', 'email',
+      'email',
         'first_name', 'last_name',
         'phone_number', 'profile_photo',
         'language', 'theme', 'location_permission',

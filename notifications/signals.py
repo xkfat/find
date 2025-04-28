@@ -4,10 +4,9 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-
+from .models import Notification
 from missing.models import MissingPerson
 from reports.models import Report
-from .models import Notification
 
 User = get_user_model()
 
@@ -31,13 +30,11 @@ def send_notification(users, message, target_instance=None):
         )
 
 
-# 1. New MissingPerson created → notify all users to help + admins of submission
 @receiver(post_save, sender=MissingPerson)
 def notify_new_missing_person(sender, instance, created, **kwargs):
     if not created:
         return
 
-    # A) Notify everyone to help
     help_msg = (
         f"🔔 New missing person: “{instance.first_name}  {instance.last_name} ”. "
         "Click to view details and help if you can."
@@ -48,7 +45,6 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         target_instance=instance
     )
 
-    # B) Notify admins of new submission
     admin_msg = (
         f"📢 Admin alert: MissingPerson “{instance.first_name}  {instance.last_name}” "
         f"(ID {instance.pk}) submitted by {instance.reporter.username}."
@@ -60,7 +56,6 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     )
 
 
-# 2. New Report created → notify admins to review
 @receiver(post_save, sender=Report)
 def notify_new_report(sender, instance, created, **kwargs):
     if not created:
@@ -78,11 +73,9 @@ def notify_new_report(sender, instance, created, **kwargs):
     )
 
 
-# 3. MissingPerson status change → notify the original reporter
 @receiver(pre_save, sender=MissingPerson)
 def notify_status_change(sender, instance, **kwargs):
     if not instance.pk:
-        # skip creation
         return
 
     try:
@@ -92,7 +85,7 @@ def notify_status_change(sender, instance, **kwargs):
 
     if previous.status != instance.status:
         status_msg = (
-            f"ℹ️ Status update for “{instance.name}”: "
+            f"ℹ️ Status update for “{instance.first_name} {instance.last_name} ”: "
             f"{previous.status} → {instance.status}."
         )
         send_notification(

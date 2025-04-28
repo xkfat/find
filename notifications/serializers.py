@@ -10,5 +10,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'date_created']
 
 
-        def get_target_model(self, obj):
-          return obj.content_type.model
+    def get_target_model(self, obj):
+          if obj.content_type:
+             return obj.content_type.model
+          return None

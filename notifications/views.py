@@ -3,8 +3,8 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-
-from .models import Notification, BasicUser
+from .models import Notification
+from users.models import BasicUser
 from .serializers import NotificationSerializer
 
 

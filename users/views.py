@@ -30,8 +30,8 @@ def register_user(request):
 @permission_classes([AllowAny])
 def login_user(request):
     serializer = LoginSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
+    if not serializer.is_valid():
+       return Response({'detail': 'Wrong password or username, please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
     username = serializer.validated_data['username']
     password = serializer.validated_data['password']
     user = authenticate(username=username, password=password)

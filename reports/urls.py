@@ -5,6 +5,6 @@ urlpatterns = [
 path('submit/', submit_report, name='submit-report'),  
 path('', list_reports, name='list-reports'),
 path('<int:id>/', report_detail, name='report-detail') ,
-path('admin/reports/<int:report_id>/update-status/', update_report_status, name='update-report-status')
+path('<int:report_id>/update-status/', update_report_status, name='update-report-status')
 
 ]

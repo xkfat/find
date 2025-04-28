@@ -59,10 +59,8 @@ class NotificationsAdmin(admin.ModelAdmin):
 
 
     def get_fields(self, request, obj=None):
-        # Show all fields when viewing existing notification
         if obj:
             return ('user', 'message', 'is_read', 'date_created')
-        # Show only editable fields when adding new notification
         return ('user', 'message')
     
 
@@ -74,11 +72,9 @@ class NotificationsAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return True
     
-    # Allow viewing notifications
     def has_view_permission(self, request, obj=None):
         return True
     
-    # Prevent changing existing notifications
     def has_delete_permission(self, request, obj=None):
         return True
     
@@ -104,15 +100,12 @@ class NotificationsAdmin(admin.ModelAdmin):
         obj = self.get_object(request, object_id)
         extra_context = extra_context or {}
 
-        # 🧼 Customize your deletion confirmation message
         extra_context['title'] = "Confirm Deletion of Notification"
-        #extra_context['custom_message'] = f"Are you sure you want to delete this notification to {obj.user.username}?"
 
         return super().delete_view(request, object_id, extra_context=extra_context)
 
     def get_deleted_objects(self, objs, request):
-     obj = objs[0]  # Get the single object being deleted
-     message_summary = f"{obj.message}"  # Just the message
+     obj = objs[0] 
+     message_summary = f"{obj.message}"  
 
-    # Return your custom summary section:
      return [], {"": message_summary}, set(), []
