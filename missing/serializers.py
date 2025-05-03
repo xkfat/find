@@ -13,6 +13,7 @@ class MissingPersonSerializer(serializers.ModelSerializer):
             'id',
             'first_name',
             'last_name',
+            'full_name',
             'gender',
             'age',
             'current_age',
@@ -25,8 +26,8 @@ class MissingPersonSerializer(serializers.ModelSerializer):
             'status',
             'reporter',
             'date_reported',
+            'days_missing'
         ]
-        read_only_fields = ['id', 'current_age', 'reporter', 'date_reported']
         
     def create(self, validated_data):
         return MissingPerson.objects.create(
