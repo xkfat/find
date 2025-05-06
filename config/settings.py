@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'missing',
     'reports',
     'notifications',
+    'location_sharing'
 ]
 
 MIDDLEWARE = [
