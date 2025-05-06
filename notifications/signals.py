@@ -73,23 +73,4 @@ def notify_new_report(sender, instance, created, **kwargs):
     )
 
 
-@receiver(pre_save, sender=MissingPerson)
-def notify_status_change(sender, instance, **kwargs):
-    if not instance.pk:
-        return
 
-    try:
-        previous = MissingPerson.objects.get(pk=instance.pk)
-    except MissingPerson.DoesNotExist:
-        return
-
-    if previous.status != instance.status:
-        status_msg = (
-            f"ℹ️ Status update for “{instance.first_name} {instance.last_name} ”: "
-            f"{previous.status} → {instance.status}."
-        )
-        send_notification(
-            instance.reporter,
-            status_msg,
-            target_instance=instance
-        )

@@ -36,7 +36,7 @@ def all_notifications(request):
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def send_notification(request):
+def sending_notification(request):
     message = request.data.get('message')
     user_id = request.data.get('receiver')
 
