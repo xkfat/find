@@ -10,6 +10,7 @@ class AccountAdmin(UserAdmin):
     model = BasicUser
 
     list_display = (
+        'id',
         'username','first_name', 'last_name', 'email', 'phone_number',
         'role', 'is_active'
     )

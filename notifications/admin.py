@@ -6,7 +6,7 @@ from django.utils.html import format_html
 
 @admin.register(Notification)
 class NotificationsAdmin(admin.ModelAdmin):
-    fields = ('user', 'message', 'is_read', 'date_created')
+    fields = ('user', 'message','notification_type', 'is_read', 'date_created')
     list_display = ('user', 'date_created', 'view_message_button')
     list_filter = ('is_read', 'date_created', 'user__username')
     search_fields = ('user__username', 'message')

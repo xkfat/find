@@ -11,7 +11,7 @@ from reports.models import Report
 User = get_user_model()
 
 
-def send_notification(users, message, target_instance=None):
+def send_notification(users, message, target_instance=None, notification_type='system'):
     ct = None
     oid = None
     if target_instance is not None:
@@ -26,7 +26,8 @@ def send_notification(users, message, target_instance=None):
             user=u,
             message=message,
             content_type=ct,
-            object_id=oid
+            object_id=oid,
+            notification_type=notification_type
         )
 
 
@@ -42,7 +43,9 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     send_notification(
         User.objects.all(),
         help_msg,
-        target_instance=instance
+        target_instance=instance,
+        notification_type='missing_person'
+
     )
 
     admin_msg = (
@@ -52,7 +55,9 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     send_notification(
         User.objects.filter(is_staff=True),
         admin_msg,
-        target_instance=instance
+        target_instance=instance,
+        notification_type='missing_person'
+
     )
 
 
@@ -69,7 +74,9 @@ def notify_new_report(sender, instance, created, **kwargs):
     send_notification(
         User.objects.filter(is_staff=True),
         report_msg,
-        target_instance=instance
+        target_instance=instance,
+        notification_type='report'
+
     )
 
 

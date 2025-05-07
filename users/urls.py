@@ -9,6 +9,6 @@ urlpatterns = [
 
 
     path('admin/', manage_users,        name='admin-accounts-list'),
-    path('<int:pk>/admin/', manage_users,    name='admin-account-manage'),
+    path('admin/<int:pk>/', manage_users,    name='admin-account-manage'),
   
 ]
