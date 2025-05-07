@@ -1,12 +1,11 @@
-# location_sharing/views.py
 from django.shortcuts import get_object_or_404
+from django.apps import apps
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.apps import apps
 
-from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriends
+from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriend
 from .serializers import (
     LocationRequestSerializer, 
     LocationSharingSerializer, 
@@ -14,145 +13,184 @@ from .serializers import (
     SelectedFriendSerializer
 )
 
+# Location Request Views
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_location_requests(request):
-    """Get pending location requests"""
-    requests = LocationRequest.objects.filter(receiver=request.user)
-    serializer = LocationRequestSerializer(requests, many=True)
+def get_pending_requests(request):
+    """Get all pending location sharing requests for the current user"""
+    pending_requests = LocationRequest.objects.filter(
+        receiver=request.user, 
+        status='pending'
+    )
+    serializer = LocationRequestSerializer(pending_requests, many=True)
     return Response(serializer.data)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_location_request(request):
-    """Send location request to another user"""
+    """Send a location sharing request to another user"""
     receiver_id = request.data.get('receiver')
     
-    # Check if already friends
-    if LocationSharing.objects.filter(user=request.user, shared_with_id=receiver_id).exists():
-        return Response({"detail": "Already sharing location with this user"}, status=status.HTTP_400_BAD_REQUEST)
+    # Check if already sharing location
+    if LocationSharing.objects.filter(user=request.user, friend_id=receiver_id).exists():
+        return Response(
+            {"detail": "Already sharing location with this user"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if request already exists
-    if LocationRequest.objects.filter(sender=request.user, receiver_id=receiver_id).exists():
-        return Response({"detail": "Request already sent"}, status=status.HTTP_400_BAD_REQUEST)
+    existing_request = LocationRequest.objects.filter(
+        sender=request.user, 
+        receiver_id=receiver_id,
+        status='pending'
+    ).first()
     
-    # Create request
-    data = {'sender': request.user.id, 'receiver': receiver_id}
-    serializer = LocationRequestSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        
-        # Send notification
-        Notification = apps.get_model('notifications', 'Notification')
-        Notification.objects.create(
-            user_id=receiver_id,
-            type='location_request',
-            message=f"{request.user.username} wants to share location with you",
-            related_id=serializer.instance.id
+    if existing_request:
+        return Response(
+            {"detail": "Request already sent"}, 
+            status=status.HTTP_400_BAD_REQUEST
         )
+    
+    # Create new request
+    data = {
+        'sender': request.user.id, 
+        'receiver': receiver_id
+    }
+    serializer = LocationRequestSerializer(data=data)
+    
+    if serializer.is_valid():
+        location_request = serializer.save()
+        
+        # Notification is handled by signal
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def accept_location_request(request, request_id):
-    """Accept location sharing request"""
-    location_request = get_object_or_404(LocationRequest, id=request_id, receiver=request.user)
-    
-    # Create two-way location sharing
-    LocationSharing.objects.create(user=request.user, shared_with=location_request.sender)
-    LocationSharing.objects.create(user=location_request.sender, shared_with=request.user)
-    
-    # Delete the request
-    location_request.delete()
-    
-    # Notify sender
-    Notification = apps.get_model('notifications', 'Notification')
-    Notification.objects.create(
-        user=location_request.sender,
-        type='location_accepted',
-        message=f"{request.user.username} accepted your location sharing request"
+def respond_to_request(request, request_id):
+    """Accept or decline a location sharing request"""
+    location_request = get_object_or_404(
+        LocationRequest, 
+        id=request_id, 
+        receiver=request.user,
+        status='pending'
     )
     
-    return Response({"detail": "Location sharing accepted"})
+    response = request.data.get('response')
+    if response not in ['accept', 'decline']:
+        return Response(
+            {"detail": "Invalid response. Use 'accept' or 'decline'"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    location_request.status = 'accepted' if response == 'accept' else 'declined'
+    location_request.save()
+    
+    if response == 'accept':
+        # Create bidirectional location sharing
+        LocationSharing.objects.create(user=request.user, friend=location_request.sender)
+        LocationSharing.objects.create(user=location_request.sender, friend=request.user)
+        
+        # Ensure both users have UserLocation objects
+        UserLocation.objects.get_or_create(user=request.user)
+        UserLocation.objects.get_or_create(user=location_request.sender)
+        
+        # Send notification (could also be moved to a signal)
+        Notification = apps.get_model('notifications', 'Notification')
+        Notification.objects.create(
+            user=location_request.sender,
+            type='location_request_accepted',
+            message=f"{request.user.username} accepted your location sharing request"
+        )
+        
+        return Response({"detail": "Location sharing request accepted"})
+    else:
+        return Response({"detail": "Location sharing request declined"})
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def decline_location_request(request, request_id):
-    """Decline location sharing request"""
-    location_request = get_object_or_404(LocationRequest, id=request_id, receiver=request.user)
-    location_request.delete()
-    return Response({"detail": "Location sharing declined"})
 
+# Location Sharing Management Views
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_sharing_friends(request):
-    """Get list of friends you're sharing location with"""
+def get_friends(request):
+    """Get list of friends user is sharing location with"""
     sharing = LocationSharing.objects.filter(user=request.user)
     serializer = LocationSharingSerializer(sharing, many=True)
     return Response(serializer.data)
 
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_friend(request, friend_id):
+    """Stop sharing location with a specific friend (bidirectional)"""
+    # Check if relationship exists
+    sharing = get_object_or_404(LocationSharing, user=request.user, friend_id=friend_id)
+    
+    # Remove both directions of location sharing
+    LocationSharing.objects.filter(user=request.user, friend_id=friend_id).delete()
+    LocationSharing.objects.filter(user_id=friend_id, friend=request.user).delete()
+    
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def send_alert(request, user_id):
-    """Send location alert to a friend"""
+def send_alert(request, friend_id):
+    """Send a location alert notification to a friend"""
     # Check if sharing relationship exists
-    get_object_or_404(LocationSharing, user=request.user, shared_with_id=user_id)
+    get_object_or_404(LocationSharing, user=request.user, friend_id=friend_id)
     
     # Send notification
     Notification = apps.get_model('notifications', 'Notification')
     Notification.objects.create(
-        user_id=user_id,
+        user_id=friend_id,
         type='location_alert',
         message=f"{request.user.username} sent you a location alert",
         related_id=request.user.id
     )
     
-    return Response({"detail": "Alert sent"})
+    return Response({"detail": "Location alert sent successfully"})
 
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def remove_friend(request, user_id):
-    """Remove location sharing with a friend"""
-    # Remove both directions of location sharing
-    LocationSharing.objects.filter(user=request.user, shared_with_id=user_id).delete()
-    LocationSharing.objects.filter(user_id=user_id, shared_with=request.user).delete()
-    
-    return Response(status=status.HTTP_204_NO_CONTENT)
 
+# User Location Views
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_friends_locations(request):
-    """Get locations of friends sharing with you"""
-    # Get users sharing with you
-    sharing_users = LocationSharing.objects.filter(
-        shared_with=request.user
+    """Get locations of friends who are sharing with current user"""
+    # Get users sharing with current user
+    friends_sharing = LocationSharing.objects.filter(
+        friend=request.user
     ).values_list('user', flat=True)
     
-    # Get your location settings
-    user_location, created = UserLocation.objects.get_or_create(user=request.user)
+    # Get the current user's location settings
+    user_location, _ = UserLocation.objects.get_or_create(user=request.user)
     
-    # Check who can see you based on settings
+    # Filter for friends who are actively sharing
     visible_locations = UserLocation.objects.filter(
-        user__in=sharing_users,
-        is_sharing=True  # Only if they have sharing enabled
+        user__in=friends_sharing,
+        is_sharing=True,  # Only if sharing is enabled
+        latitude__isnull=False,  # Must have location data
+        longitude__isnull=False
     )
     
-    # Filter for selected friends if they're not sharing with all
-    non_all_sharing = visible_locations.filter(share_with_all_friends=False)
-    for loc in non_all_sharing:
-        # Check if you're a selected friend
-        if not SelectedFriends.objects.filter(user_location=loc, friend=request.user).exists():
+    # Filter for selected friends if not sharing with all
+    limited_sharing_users = visible_locations.filter(share_with_all_friends=False)
+    for loc in limited_sharing_users:
+        # Check if current user is a selected friend
+        if not SelectedFriend.objects.filter(user_location=loc, friend=request.user).exists():
             visible_locations = visible_locations.exclude(id=loc.id)
     
     serializer = UserLocationSerializer(visible_locations, many=True)
     return Response(serializer.data)
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_my_location(request):
-    """Update your current location"""
+    """Update current user's location"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
     serializer = UserLocationSerializer(location, data=request.data, partial=True)
@@ -161,12 +199,14 @@ def update_my_location(request):
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_sharing_settings(request):
     """Update location sharing settings"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
+    # Update sharing settings
     is_sharing = request.data.get('is_sharing')
     share_with_all_friends = request.data.get('share_with_all_friends')
     
@@ -178,25 +218,28 @@ def update_sharing_settings(request):
     location.save()
     
     # Handle selected friends if not sharing with all
-    if not location.share_with_all_friends and 'selected_friends' in request.data:
+    if 'selected_friends' in request.data:
         # Clear current selections
-        SelectedFriends.objects.filter(user_location=location).delete()
+        SelectedFriend.objects.filter(user_location=location).delete()
         
         # Add new selections
         selected_friends = request.data.get('selected_friends', [])
         for friend_id in selected_friends:
-            SelectedFriends.objects.create(user_location=location, friend_id=friend_id)
+            # Verify this is actually a friend
+            if LocationSharing.objects.filter(user=request.user, friend_id=friend_id).exists():
+                SelectedFriend.objects.create(user_location=location, friend_id=friend_id)
     
     return Response({
         "is_sharing": location.is_sharing,
         "share_with_all_friends": location.share_with_all_friends
     })
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_selected_friends(request):
     """Get friends selected for limited sharing"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
-    selected = SelectedFriends.objects.filter(user_location=location)
+    selected = SelectedFriend.objects.filter(user_location=location)
     serializer = SelectedFriendSerializer(selected, many=True)
     return Response(serializer.data)

@@ -3,22 +3,21 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Location requests
-    path('requests/', views.get_location_requests, name='location-requests'),
-    path('requests/send/', views.send_location_request, name='send-location-request'),
-    path('requests/<int:request_id>/accept/', views.accept_location_request, name='accept-location-request'),
-    path('requests/<int:request_id>/decline/', views.decline_location_request, name='decline-location-request'),
+    # Location request endpoints
+    path('requests/', views.get_pending_requests, name='get_pending_requests'),
+    path('requests/send/', views.send_location_request, name='send_location_request'),
+    path('requests/<int:request_id>/respond/', views.respond_to_request, name='respond_to_request'),
     
-    # Friends management
-    path('friends/', views.get_sharing_friends, name='sharing-friends'),
-    path('friends/<int:user_id>/alert/', views.send_alert, name='send-alert'),
-    path('friends/<int:user_id>/remove/', views.remove_friend, name='remove-friend'),
+    # Friend management endpoints
+    path('friends/', views.get_friends, name='get_friends'),
+    path('friends/<int:friend_id>/remove/', views.remove_friend, name='remove_friend'),
+    path('friends/<int:friend_id>/alert/', views.send_alert, name='send_alert'),
     
-    # Location data
-    path('map/', views.get_friends_locations, name='friends-locations'),
-    path('my-location/', views.update_my_location, name='update-my-location'),
+    # Location data endpoints
+    path('locations/', views.get_friends_locations, name='get_friends_locations'),
+    path('locations/update/', views.update_my_location, name='update_my_location'),
     
-    # Settings
-    path('settings/', views.update_sharing_settings, name='update-sharing-settings'),
-    path('settings/selected-friends/', views.get_selected_friends, name='selected-friends'),
+    # Sharing settings endpoints
+    path('settings/', views.update_sharing_settings, name='update_sharing_settings'),
+    path('settings/selected-friends/', views.get_selected_friends, name='get_selected_friends'),
 ]

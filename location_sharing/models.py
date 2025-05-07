@@ -1,10 +1,29 @@
-# location_sharing/models.py
 from django.db import models
 from django.conf import settings
 
 class LocationRequest(models.Model):
-    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_location_requests')
-    receiver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_location_requests')
+    """Request from one user to another to establish location sharing"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined')
+    ]
+    
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='sent_location_requests'
+    )
+    receiver = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='received_location_requests'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -13,22 +32,34 @@ class LocationRequest(models.Model):
         verbose_name_plural = 'Location Requests'
     
     def __str__(self):
-        return f"{self.sender.username} → {self.receiver.username}"
+        return f"{self.sender.username} → {self.receiver.username} ({self.get_status_display()})"
+
 
 class LocationSharing(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sharing_with')
-    shared_with = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_by')
+    """Represents a bidirectional location sharing relationship between two users"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='sharing_with'
+    )
+    friend = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='shared_by'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        unique_together = ('user', 'shared_with')
+        unique_together = ('user', 'friend')
         verbose_name = 'Location Sharing'
         verbose_name_plural = 'Location Sharing'
     
     def __str__(self):
-        return f"{self.user.username} shares with {self.shared_with.username}"
+        return f"{self.user.username} shares with {self.friend.username}"
+
 
 class UserLocation(models.Model):
+    """Stores a user's current location and sharing preferences"""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
@@ -43,12 +74,25 @@ class UserLocation(models.Model):
     def __str__(self):
         return f"{self.user.username}'s location"
     
-class SelectedFriends(models.Model):
-    user_location = models.ForeignKey(UserLocation, on_delete=models.CASCADE, related_name='selected_friends')
+    @property
+    def has_location(self):
+        """Check if the user has set their location"""
+        return self.latitude is not None and self.longitude is not None
+
+
+class SelectedFriend(models.Model):
+    """When a user doesn't share with all friends, this stores which friends can see their location"""
+    user_location = models.ForeignKey(
+        UserLocation, 
+        on_delete=models.CASCADE, 
+        related_name='selected_friends'
+    )
     friend = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     
     class Meta:
         unique_together = ('user_location', 'friend')
+        verbose_name = 'Selected Friend'
+        verbose_name_plural = 'Selected Friends'
     
     def __str__(self):
         return f"{self.user_location.user.username} selected {self.friend.username}"
