@@ -50,7 +50,6 @@ class UserLocationSerializer(serializers.ModelSerializer):
 
 
 class SelectedFriendSerializer(serializers.ModelSerializer):
-    """Serializer for selected friends (limited sharing)"""
     friend_details = UserSerializer(source='friend', read_only=True)
     
     class Meta:

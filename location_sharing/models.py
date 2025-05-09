@@ -59,7 +59,6 @@ class LocationSharing(models.Model):
 
 
 class UserLocation(models.Model):
-    """Stores a user's current location and sharing preferences"""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
@@ -76,12 +75,10 @@ class UserLocation(models.Model):
     
     @property
     def has_location(self):
-        """Check if the user has set their location"""
         return self.latitude is not None and self.longitude is not None
 
 
 class SelectedFriend(models.Model):
-    """When a user doesn't share with all friends, this stores which friends can see their location"""
     user_location = models.ForeignKey(
         UserLocation, 
         on_delete=models.CASCADE, 
