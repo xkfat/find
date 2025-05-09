@@ -4,6 +4,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from .signals import location_alert
+from django.contrib.auth import get_user_model
 
 from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriend
 from .serializers import (
@@ -29,8 +31,14 @@ def get_pending_requests(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_location_request(request):
-    receiver_id = request.data.get('receiver')
-    
+    identifier = request.data.get('identifier')
+    receiver = find_user_by_identifier('identifier')
+    if not receiver: 
+        return Response(
+            {"detail" : "User not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    receiver_id = receiver.id
     if LocationSharing.objects.filter(user=request.user, friend_id=receiver_id).exists():
         return Response(
             {"detail": "Already sharing location with this user"}, 
@@ -126,7 +134,7 @@ def remove_friend(request, friend_id):
 @permission_classes([IsAuthenticated])
 def send_alert(request, friend_id):
     friend = get_object_or_404(LocationSharing, user=request.user, friend_id=friend_id).friend
-    send_location_alert(sender=request.user, recipient=friend)
+    location_alert.send(sender=request.user.__class__, instance=request.user, recipient=friend)
 
   
     return Response({"detail": "Location alert sent successfully"})
@@ -177,35 +185,38 @@ def update_my_location(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_sharing_settings(request):
-    """Update location sharing settings"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
-    # Update sharing settings
     is_sharing = request.data.get('is_sharing')
-    share_with_all_friends = request.data.get('share_with_all_friends')
+    sharing_mode = request.data.get('sharing_mode')
     
     if is_sharing is not None:
         location.is_sharing = is_sharing
-    if share_with_all_friends is not None:
-        location.share_with_all_friends = share_with_all_friends
+
+    if sharing_mode == 'all_friends':
+        location.share_with_all_friends = True
+    elif sharing_mode == 'selected_friends':
+        location.share_with_all_friends = False
     
     location.save()
     
-    # Handle selected friends if not sharing with all
-    if 'selected_friends' in request.data:
-        # Clear current selections
+    if 'selected_friends' in request.data and sharing_mode == 'selected_friends':
         SelectedFriend.objects.filter(user_location=location).delete()
         
-        # Add new selections
         selected_friends = request.data.get('selected_friends', [])
+        if not selected_friends:
+            return Response(
+                {"detail": "At least one friend must be selected for 'selected_friends' mode"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         for friend_id in selected_friends:
-            # Verify this is actually a friend
             if LocationSharing.objects.filter(user=request.user, friend_id=friend_id).exists():
                 SelectedFriend.objects.create(user_location=location, friend_id=friend_id)
     
     return Response({
         "is_sharing": location.is_sharing,
-        "share_with_all_friends": location.share_with_all_friends
+        "sharing_mode": 'all_friends' if location.share_with_all_friends else "selected_friends",
+        "selected_friends_count" : SelectedFriend.objects.filter(user_Location=location).count() if not location.share_with_all_friends else None
     })
 
 
@@ -217,3 +228,26 @@ def get_selected_friends(request):
     selected = SelectedFriend.objects.filter(user_location=location)
     serializer = SelectedFriendSerializer(selected, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_sharing_settings(request):
+    location, created = UserLocation.objects.get_or_create(user=request.user)
+    selected_count = SelectedFriend.objects.filter(user_location=location).count()
+    
+    return Response({
+        "is_sharing": location.is_sharing,
+        "sharing_mode": "all_friends" if location.share_with_all_friends else "selected_friends",
+        "selected_friends_count": selected_count if not location.share_with_all_friends else None
+    })
+
+
+def find_user_by_identifier(identifier):
+    User = get_user_model()
+    user = User.objects.filter(username=identifier).first()
+    if user:
+        return user
+        
+    user = User.objects.filter(phone_number=identifier).first()
+    return user

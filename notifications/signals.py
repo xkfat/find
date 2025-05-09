@@ -5,7 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from .models import Notification
 from missing.models import MissingPerson
 from missing.signals import case_status_changed
-from location_sharing.signals import location_alert, location_request_responded, location_request_sent
+from location_sharing.signals import send_location_alert, emit_location_request
 from reports.signals import report_created, report_status_changed
 
 User = get_user_model()

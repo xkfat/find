@@ -20,4 +20,6 @@ urlpatterns = [
     # Sharing settings endpoints
     path('settings/', views.update_sharing_settings, name='update_sharing_settings'),
     path('settings/selected-friends/', views.get_selected_friends, name='get_selected_friends'),
+    path('settings/current/', views.get_sharing_settings, name='get_sharing_settings'),
+
 ]
