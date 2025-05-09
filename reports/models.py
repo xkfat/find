@@ -23,5 +23,5 @@ class Report(models.Model):
     report_status = models.CharField(max_length=10, choices=REPORT_CHOICES, default=STATUS_NEW)
 
     def __str__(self) :
-        return f"Report by {self.user} about {self.missing_person} ({self.date_submitted.date()}) "
+        return f"Report by {self.user or 'Anonymous'} about {self.missing_person} on ({self.date_submitted:%Y-%m-%d}) "
      

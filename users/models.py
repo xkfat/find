@@ -34,10 +34,12 @@ class BasicUser(AbstractUser):
  theme = models.CharField(max_length=10, choices=THEME_CHOICES, default=THEME_LIGHT)
  location_permission = models.BooleanField(default=False)
  role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_USER)
-
-def __str__(self):
-     return f"{self.username} ({self.role})"
-
-def save(self, *args, **kwargs):
+ 
+ 
+ def __str__(self):
+          return f"{self.username} ({self.role})"
+ 
+ 
+ def save(self, *args, **kwargs):
         self.is_staff = (self.role == self.ROLE_ADMIN)
         super().save(*args, **kwargs)

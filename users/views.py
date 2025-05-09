@@ -70,7 +70,6 @@ def profile_user(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
-     serializer = ChangePasswordSerializer(data=request.data)
      serializer = ChangePasswordSerializer(data=request.data, context={'request' : request})
      serializer.is_valid(raise_exception=True)
 

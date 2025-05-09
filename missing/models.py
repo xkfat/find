@@ -12,8 +12,8 @@ GENDER = [
 
 CASE_STATUS = [
     ('missing', 'Missing'),
-    ('found', 'found'),
-    ('Investigating', 'under_investigation'),
+    ('found', 'Found'),
+    ('under_investigation', 'Investigating'),
 ]
 
 SUBMISSION_STATUS = [
@@ -36,7 +36,7 @@ class MissingPerson(models.Model):
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     reporter = models.ForeignKey(BasicUser, on_delete=models.SET_NULL, null=True, blank=True)
-    status = models.CharField(max_length=50, choices=CASE_STATUS, default='missing')  # Changed default to 'missing'
+    status = models.CharField(max_length=50, choices=CASE_STATUS, default='missing')  
     date_reported = models.DateTimeField(auto_now_add=True)
     submission_status = models.CharField(max_length=20, choices=SUBMISSION_STATUS, default='in_progress')
 

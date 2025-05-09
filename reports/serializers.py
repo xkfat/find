@@ -2,8 +2,8 @@ from rest_framework import serializers
 from .models import Report
 
 class ReportSerializer(serializers.ModelSerializer):
-    reporter = serializers.StringRelatedField(source='user.username', read_only=True)
-    missing_person = serializers.StringRelatedField(read_only=True)
+    reporter = serializers.ReadOnlyField(source='user.username')
+    missing_person = serializers.ReadOnlyField(source='missing_person.full_name')
 
 
     class Meta:

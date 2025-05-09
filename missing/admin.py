@@ -23,7 +23,19 @@ class MissingPersonAdmin(admin.ModelAdmin):
         return ('full_name', 'days_missing', 'date_reported')
     
     def get_fieldsets(self, request, obj=None):
-        fieldsets = [
+        if obj is None:
+           return [
+            ('Personal Information', {
+                'fields': ('first_name', 'last_name', 'age', 'gender', 'photo')
+            }),
+            ('Missing Details', {
+                'fields': ('last_seen_date', 'last_seen_location', 'latitude', 'longitude')
+            }),
+            ('Case Information', {
+                'fields': ('description', 'status', 'reporter', 'submission_status')
+            }),
+           ]
+        return [
             ('Personal Information', {
                 'fields': ('full_name', 'age', 'gender', 'photo')
             }),
@@ -33,18 +45,14 @@ class MissingPersonAdmin(admin.ModelAdmin):
             ('Case Information', {
                 'fields': ('description', 'status', 'reporter', 'submission_status')
             }),
+            ('Additional Information' , {
+                'fields': self.get_readonly_fields(request, obj),
+                'classes': ('collapse',)
+            }),
         ]
         
-        if obj is not None:  
-            fieldsets.append(
-                ('Additional Information', {
-                    'fields': self.get_readonly_fields(request, obj),
-                    'classes': ('collapse',)
-                })
-            )
-            
-        return fieldsets
-
+     
+    
 
     actions = ['change_to_found', 'change_to_under_investigation', 'change_to_missing',
                'change_submission_to_active', 
@@ -62,13 +70,14 @@ class MissingPersonAdmin(admin.ModelAdmin):
     def change_to_found(modeladmin, request, queryset):
        updated = queryset.update(status='found')
        messages.success(request, f"{updated} case status to found.")
-    @admin.action(description='Change selected cases to searching')
-    def change_to_under_investigation(modeladmin, request, queryset):
+       
+    @admin.action(description='Change selected cases to missing')
+    def change_to_missing(modeladmin, request, queryset):
       updated = queryset.update(status='missing')
       messages.success(request, f"{updated} case status to missing.")
 
     @admin.action(description='Change selected cases to under investigation')
-    def change_to_searching(modeladmin, request, queryset):
+    def change_to_under_investigation(modeladmin, request, queryset):
      updated = queryset.update(status='Investigating')
      messages.success(request, f"{updated} case status to under investigation.")
     

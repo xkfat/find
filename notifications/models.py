@@ -11,6 +11,8 @@ class Notification(models.Model):
         ('report', 'Report Notification'),
         ('location_request', 'Location Request'),
         ('location_response', 'Location Response'),
+        ('case_update', 'Case Update'),
+        ('location_alert', 'Location Alert'),
     )
 
     

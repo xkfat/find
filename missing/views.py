@@ -2,22 +2,27 @@ from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny,IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
-from rest_framework import status
-from .models import MissingPerson, CaseUpdate
-from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-
+from rest_framework import status
+from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
+from .models import MissingPerson, CaseUpdate
+from .filters import MissingPersonFilter
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticatedOrReadOnly])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def missing_person_list(request):
-    print("CONTENT-TYPE:", request.content_type)
 
     if request.method == 'GET':
-        queryset = MissingPerson.objects.all().order_by('-date_reported')
-        serializer = MissingPersonSerializer(queryset, many=True, context={'request': request})
-        return Response(serializer.data)
+        queryset = MissingPerson.objects.select_related('reporter').prefetch_related('updates').order_by('-date_reported')
+        filtered_qs = MissingPersonFilter(request.GET, queryset=queryset).qs
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(filtered_qs, request)
+
+        serializer = MissingPersonSerializer(page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
+    
     elif request.method == 'POST':
         serializer = MissingPersonSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -104,4 +109,4 @@ def case_detail_with_updates(request, case_id):
                   {'error': 'You do not have permission to view this case'}, status=status.HTTP_403_FORBIDDEN
             )
       serializer = MissingPersonSerializer(case, context={'request': request})
-      return Response(serializer.date)
+      return Response(serializer.data)

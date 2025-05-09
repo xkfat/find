@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.urls import path, reverse
-from .models import Notification, BasicUser
+from .models import Notification
+from users.models import BasicUser
 from django.http import HttpResponse
 from django.utils.html import format_html
 
@@ -103,9 +104,3 @@ class NotificationsAdmin(admin.ModelAdmin):
         extra_context['title'] = "Confirm Deletion of Notification"
 
         return super().delete_view(request, object_id, extra_context=extra_context)
-
-    def get_deleted_objects(self, objs, request):
-     obj = objs[0] 
-     message_summary = f"{obj.message}"  
-
-     return [], {"": message_summary}, set(), []

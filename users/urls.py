@@ -8,7 +8,7 @@ urlpatterns = [
     path('profile/change-password/', change_password, name='change-password'),
 
 
-    path('admin/', manage_users,        name='admin-accounts-list'),
-    path('admin/<int:pk>/', manage_users,    name='admin-account-manage'),
+    path('', manage_users,        name='admin-accounts-list'),
+    path('<int:pk>/', manage_users,    name='admin-account-detail'),
   
 ]

@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 
 
+
 @admin.action(description='Change selected reports to unverified')
 def change_to_unverified(modeladmin, request, queryset):
     updated = queryset.update(report_status='unverified')
@@ -20,14 +21,20 @@ def change_to__false(modeladmin, request, queryset):
     messages.success(request, f"{updated} report(s) changed to false.")
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ('user', 'missing_person', 'report_status', 'view_note_link')
-    readonly_fields = ('user', 'missing_person', 'date_submitted', 'report_status', 'note')
+    list_display = ('reporter', 'missing_person', 'report_status', 'date_submitted', 'view_note_link')
+    readonly_fields = ('user', 'missing_person', 'date_submitted', 'note')
     list_filter = ('report_status', 'date_submitted')
     ordering = ('-date_submitted',)
     search_fields = ('note', 'user__username', 'missing_person__first_name')
     list_per_page = 5
     actions = [change_to_unverified, change_to_verified, change_to__false]
     date_hierarchy = 'date_submitted'
+
+
+
+    def reporter(self, obj):
+        return obj.user.username
+    reporter.short_description = 'Reporter'
 
     def view_note_link(self, obj):
         url = reverse('admin:reports_report_change', args=[obj.pk])

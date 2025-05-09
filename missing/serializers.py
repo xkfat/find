@@ -40,28 +40,22 @@ class MissingPersonSerializer(serializers.ModelSerializer):
         ]
         
     def create(self, validated_data):
-        instance =  MissingPerson.objects.create(
+        return MissingPerson.objects.create(
             reporter=self.context['request'].user,
             **validated_data
         )
-        CaseUpdate.objects.create(
-            case=instance,
-            message="We're looking and verifying your case.",
-            
-        )
-        return instance
-    
+
 class CaseUpdateCreateSerializer(serializers.ModelSerializer):
         class Meta:
             model = CaseUpdate
             fields = ['message']
 
-        def create(self, validated_date):
+        def create(self, validated_data):
             case_id = self.context.get('case_id')
 
             return CaseUpdate.objects.create(
                 case_id=case_id,
-                **validated_date
+                **validated_data
 
             )
         

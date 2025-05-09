@@ -5,32 +5,21 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import Report
 from .serializers import ReportSerializer
-from missing.models import MissingPerson
-from notifications.models import Notification
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_report(request):
-    note = request.data.get('note')
-    missing_id = request.data.get('missing_person')
-    
-    try:
-        missing_person = MissingPerson.objects.get(id=missing_id)
-    except MissingPerson.DoesNotExist:
-        return Response({'error': 'Missing person not found.'}, status=status.HTTP_404_NOT_FOUND)
+    serializer = ReportSerializer(data=request.data, context={'request': request})
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    report = Report.objects.create(
-        user=request.user,
-        missing_person=missing_person,
-        note=note
-    )
-    return Response({'message': 'Thank you for trying to help us, we appreciate your helping ^^'}, status=status.HTTP_201_CREATED)
-
+    serializer.save(user=request.user)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def list_reports(request):
-    reports = Report.objects.all().order_by('-date_submitted')
+    reports = Report.objects.select_related('user','missing_person').order_by('-date_submitted')
     serializer = ReportSerializer(reports, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -56,19 +45,21 @@ def report_detail(request, id):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
     
-@api_view(['POST'])
+@api_view(['PATCH'])
 @permission_classes([IsAdminUser])
 def update_report_status(request, report_id):
     report = get_object_or_404(Report, id=report_id)
     new_status = request.data.get('report_status')
     
+
+    valid = {choice[0] for choice in Report.REPORT_CHOICES}
+    if new_status not in valid:
+        return Response({'error' : 'Invalid report status.'}, status=status.HTTP_400_BAD_REQUEST)
+    
     report.report_status = new_status
     report.save()
 
-    Notification.objects.create(
-        user=report.user,
-        message=f" report for {report.pk} status has changed to {new_status}."
-    )
-    
+  
+
     serializer = ReportSerializer(report)
     return Response(serializer.data, status=status.HTTP_200_OK)
