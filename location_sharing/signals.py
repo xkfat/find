@@ -27,7 +27,6 @@ def emit_location_request(sender, instance, created, **kwargs):
       
     
 
-@receiver(location_alert)
 def send_location_alert(sender, recipient):
         location_alert.send(
               sender=sender,

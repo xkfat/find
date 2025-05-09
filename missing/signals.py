@@ -6,7 +6,6 @@ case_status_changed = Signal()
 
 @receiver(pre_save, sender=MissingPerson)
 def _cache_old_submission_status(sender, instance, **kwargs):
- 
     if not instance.pk:
         instance._old_submission_status = None
     else:
@@ -14,7 +13,6 @@ def _cache_old_submission_status(sender, instance, **kwargs):
 
 @receiver(post_save, sender=MissingPerson)
 def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
-
     defaults = {
         'active':      "We start investigating your case.",
         'in_progress': "We're looking and verifying your case.",
@@ -48,8 +46,3 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
             new_status=new_status,
             update=update,
         )
-        
-    
-
-   
-

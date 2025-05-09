@@ -5,7 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from .models import Notification
 from missing.models import MissingPerson
 from missing.signals import case_status_changed
-from location_sharing.signals import send_location_alert, emit_location_request
+from location_sharing.signals import location_alert, location_request_sent, location_request_responded
 from reports.signals import report_created, report_status_changed
 
 User = get_user_model()
@@ -37,7 +37,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         return
 
     help_msg = (
-        f"🔔 New missing person: “{instance.first_name}  {instance.last_name} ”. "
+        f"🔔 New missing person: \"{instance.first_name}  {instance.last_name} \". "
         "Click to view details and help if you can."
     )
     send_notification(
@@ -49,9 +49,8 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     )
 
     admin_msg = (
-        f"📢 Admin alert: MissingPerson “{instance.first_name}  {instance.last_name}” "
-        f"(ID {instance.pk}) submitted by {instance.reporter.username}."
-    )
+        f"📢 Admin alert: MissingPerson \"{instance.first_name}  {instance.last_name}\" "
+        f"(ID {instance.pk}) submitted by {instance.reporter.username}.")
     send_notification(
         User.objects.filter(is_staff=True),
         admin_msg,
@@ -64,8 +63,8 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
 @receiver(report_created)
 def notify_new_report(sender, instance, **kwargs):
     report_msg = (
-    f"📝 New report (ID {instance.pk}) on “"
-    f"{instance.missing_person.first_name} {instance.missing_person.last_name}” "
+    f"📝 New report (ID {instance.pk}) on "
+    f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
     f"submitted by {instance.user.username}."
 )
     send_notification(
@@ -115,14 +114,10 @@ def notify_location_request_responded(sender, instance, new_status, **kwargs):
 
 
 @receiver(location_alert)
-def notify_location_alert(sender, instance, **kwargs):
-    recipient = getattr(instance, 'receiver', None)
-    if recipient:
-        send_notification(
-            recipient,
-            f"{instance.sender.username} sent you a location alert.",
-            target_instance=instance,
-            notification_type='location_alert'
-        )
-
-
+def notify_location_alert(sender, instance, recipient, **kwargs):
+    send_notification(
+        recipient,
+        f"{instance.username} sent you a location alert.",
+        target_instance=instance,
+        notification_type='location_alert'
+    )

@@ -32,7 +32,7 @@ def get_pending_requests(request):
 @permission_classes([IsAuthenticated])
 def send_location_request(request):
     identifier = request.data.get('identifier')
-    receiver = find_user_by_identifier('identifier')
+    receiver = find_user_by_identifier(identifier)
     if not receiver: 
         return Response(
             {"detail" : "User not found"}, status=status.HTTP_404_NOT_FOUND
@@ -133,6 +133,7 @@ def remove_friend(request, friend_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_alert(request, friend_id):
+
     friend = get_object_or_404(LocationSharing, user=request.user, friend_id=friend_id).friend
     location_alert.send(sender=request.user.__class__, instance=request.user, recipient=friend)
 
@@ -216,7 +217,7 @@ def update_sharing_settings(request):
     return Response({
         "is_sharing": location.is_sharing,
         "sharing_mode": 'all_friends' if location.share_with_all_friends else "selected_friends",
-        "selected_friends_count" : SelectedFriend.objects.filter(user_Location=location).count() if not location.share_with_all_friends else None
+        "selected_friends_count": SelectedFriend.objects.filter(user_location=location).count() if not location.share_with_all_friends else None
     })
 
 
