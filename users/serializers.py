@@ -21,12 +21,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with that email already exists.")
         return value
-    
+    """
     def validate_phone_number(self, value):
         if User.objects.filter(phone_number=value).exists():
             raise serializers.ValidationError("A user with that phone number already exists.")
         return value
-    
+    """
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("Username is already taken.")
@@ -88,12 +88,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("email is already taken.")
         return value
     
-    def validate_phone_number(self, value):
+    """ 
+     def validate_phone_number(self, value):
         user = self.context['request'].user
         if User.objects.exclude(pk=user.pk).filter(phone_number=value).exists():
             raise serializers.ValidationError("Phone number is already taken.")
         return value
-    
+    """
 class ChangePasswordSerializer(serializers.Serializer):
     old_password     = serializers.CharField(write_only=True, required=True)
     new_password     = serializers.CharField(write_only=True, required=True, validators=[validate_password], label ='New password')

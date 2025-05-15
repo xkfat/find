@@ -22,6 +22,7 @@ class AccountAdmin(UserAdmin):
 
     list_display       = (
         'id',
+        'username',
         'full_name',
         'email',
         'phone_number',

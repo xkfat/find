@@ -34,6 +34,7 @@ def register_user(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
+    
     serializer = LoginSerializer(data=request.data)
     if not serializer.is_valid():
        return Response({'detail': 'Wrong password or username, please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -48,7 +49,10 @@ def login_user(request):
             'access' : str(refresh.access_token),
             'user': ProfileSerializer(user).data
         }, status=status.HTTP_200_OK)
-    return Response({'detail': 'Wrong username or password! please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
+
 
 
 @api_view(['GET', 'PATCH'])
