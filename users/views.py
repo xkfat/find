@@ -8,6 +8,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegisterSerializer, LoginSerializer, AdminUserSerializer, ProfileSerializer, ChangePasswordSerializer
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from rest_framework_simplejwt.tokens import RefreshToken
+from firebase_admin import auth as firebase_auth
+from rest_framework_simplejwt.tokens import RefreshToken
+from datetime import datetime, timedelta
+
 
 User = get_user_model()
 
@@ -104,3 +109,77 @@ def manage_users(request, pk=None):
                return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_user(request):
+    try:
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def firebase_auth_view(request):
+   
+    try:
+        id_token = request.data.get('id_token')
+        if not id_token:
+            return Response({'error': 'No ID token provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        decoded_token = firebase_auth.verify_id_token(id_token)
+        firebase_uid = decoded_token['uid']
+        
+        email = decoded_token.get('email', '')
+        name = decoded_token.get('name', '')
+        phone = decoded_token.get('phone_number', '')
+        
+        username = email.split('@')[0] if email else f"user_{firebase_uid[:8]}"
+        
+        try:
+            if email:
+                user = User.objects.get(email=email)
+            else:
+                user = User.objects.get(username__startswith=f"user_{firebase_uid[:8]}")
+        except User.DoesNotExist:
+            user = User.objects.create_user(
+                username=username,
+                email=email or '',
+                password=User.objects.make_random_password() 
+            )
+            
+            if name:
+                name_parts = name.split(' ', 1)
+                user.first_name = name_parts[0]
+                if len(name_parts) > 1:
+                    user.last_name = name_parts[1]
+                user.save()
+        
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'token': str(refresh.access_token),
+            'refresh_token': str(refresh),
+            'user': {
+                'id': User.id,
+                'username': User.username,
+                'email': User.email,
+                'first_name': User.first_name,
+                'last_name': User.last_name,
+                'phone_number': phone,
+            },
+            'expiry_time': (datetime.now() + timedelta(minutes=60)).isoformat(),
+        })
+    
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

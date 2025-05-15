@@ -46,6 +46,8 @@ INSTALLED_APPS = [
     'notifications',
     'location_sharing',
     'django_filters',
+        'rest_framework_simplejwt.token_blacklist',
+
 
     
 ]
@@ -101,6 +103,13 @@ REST_FRAMEWORK = {
   'PAGE_SIZE': 20,
     
 }
+
+
+SIMPLE_JWT = {
+    'BLACKLIST_AFTER_ROTATION': True,
+    'BLACKLIST_TOKEN_CHECKS': ['refresh'],
+}
+
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
@@ -111,11 +120,13 @@ DATABASES = {
     }
 }
 
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
+    """
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
@@ -128,6 +139,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+    """
 ]
 
 
