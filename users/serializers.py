@@ -37,7 +37,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'password': 'passwords must match.'})
         
         return attrs
-    
+
 
     def create(self, validated_data):
         validated_data.pop('password2')

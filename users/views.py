@@ -28,28 +28,80 @@ def register_user(request):
             'access': str(refresh.access_token),
             'user': ProfileSerializer(user).data
         }, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    errors = serializer.errors
+    
+    if 'username' in errors:
+        if any('unique' in str(error).lower() for error in errors['username']):
+         return Response({
+                "field": "username",
+                "message": "Username is already taken."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({
+                "field": "username",
+                "message": errors['username'][0] 
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if 'email' in errors:
+        if any('unique' in str(error).lower() for error in errors['email']):
+            return Response({
+                "field": "email",
+                "message": "Email is already taken."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({
+                "field": "email",
+                "message": errors['email'][0]  
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if 'password' in errors:
+        return Response({
+            "field": "password",
+            "message": errors['password'][0]  
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    if 'phone_number' in errors:
+        return Response({
+            "field": "phone_number",
+            "message": errors['phone_number'][0]  
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if errors:
+        first_field = list(errors.keys())[0]
+        return Response({
+            "field": first_field,
+            "message": errors[first_field][0]  
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({
+        "message": "An error occurred during registration."
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
-    
+    print(request.data)
     serializer = LoginSerializer(data=request.data)
     if not serializer.is_valid():
-       return Response({'detail': 'Wrong password or username, please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
+       return Response({'msg': 'Wrong password or username, please try again.',"code":"400"}, status=status.HTTP_200_OK)
+    
     username = serializer.validated_data['username']
     password = serializer.validated_data['password']
     user = authenticate(username=username, password=password)
-
+    
     if user is not None:
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh' : str(refresh), 
             'access' : str(refresh.access_token),
-            'user': ProfileSerializer(user).data
+            'user': ProfileSerializer(user).data,
+            "code":"200"
         }, status=status.HTTP_200_OK)
-
+    else:
+     return Response({'msg': 'Wrong password or username, please try again.',"code":"401"}, status=status.HTTP_200_OK)
+    
 
 
 
@@ -187,3 +239,41 @@ def firebase_auth_view(request):
     
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def validate_fields(request):
+    errors = {}
+    
+    username = request.data.get('username')
+    if username and User.objects.filter(username=username).exists():
+        errors['username'] = ['This username is already taken.']
+    
+    email = request.data.get('email')
+    if email and User.objects.filter(email=email).exists():
+        errors['email'] = ['This email is already registered.']
+    
+    phone_number = request.data.get('phone_number')
+    if phone_number and User.objects.filter(phone_number=phone_number).exists():
+        errors['phone_number'] = ['This phone number is already registered.']
+    
+    if errors:
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({'valid': True}, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def delete_account(request):
+    username = request.data.get('username')
+    
+    try:
+        user = User.objects.get(username=username)
+        user.delete()
+        return Response({"success": True}, status=status.HTTP_200_OK)
+    except User.DoesNotExist:
+        return Response({"success": False, "message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"success": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
