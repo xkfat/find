@@ -7,7 +7,7 @@ urlpatterns = [
     path('profile/', profile_user, name='profile'),
     path('profile/change-password/', change_password, name='change-password'),
     path('logout/', logout_user, name='logout'), 
-    path('firebase-auth/', firebase_auth_view, name='firebase_auth'),
+    path('social-auth/', firebase_auth_view, name='firebase_auth'),
     path('api/accounts/validate-fields/', validate_fields, name='validate_fields'),
     path('api/accounts/delete/', delete_account, name='delete_account'),
 

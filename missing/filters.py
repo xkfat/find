@@ -1,7 +1,11 @@
 import django_filters
 from .models import MissingPerson, GENDER, CASE_STATUS
+from django.db import models
 
 class MissingPersonFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(method='filter_by_name')
+    location = django_filters.CharFilter(method='filter_by_location')
+
     gender = django_filters.ChoiceFilter(choices=GENDER)
     status = django_filters.ChoiceFilter(choices=CASE_STATUS)
 
@@ -15,9 +19,25 @@ class MissingPersonFilter(django_filters.FilterSet):
         field_name='date_reported', lookup_expr='lte'
     )
 
+    def filter_by_name(self, queryset, name, value):
+        if value:
+            return queryset.filter(
+                models.Q(first_name__icontains=value) | 
+                models.Q(last_name__icontains=value)
+            )
+        return queryset
+    def filter_by_location(self, queryset, last_seen_location, value):
+        if value:
+            return queryset.filter(
+                models.Q(last_seen_location__icontains=value) 
+            )
+        return queryset
+
     class Meta:
         model = MissingPerson
         fields = [
+          'name',
+          'location',
           'gender',
           'status',
           'age_min',

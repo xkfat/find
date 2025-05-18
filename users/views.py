@@ -12,7 +12,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from firebase_admin import auth as firebase_auth
 from rest_framework_simplejwt.tokens import RefreshToken
 from datetime import datetime, timedelta
+import uuid
+import string
+import random
 
+
+def generate_random_password(length=12):
+            characters = string.ascii_letters + string.digits + string.punctuation
+            return ''.join(random.choice(characters) for _ in range(length))
+        
 
 User = get_user_model()
 
@@ -183,43 +191,105 @@ def logout_user(request):
     
 
 
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def firebase_auth_view(request):
-   
     try:
         id_token = request.data.get('id_token')
+        provider = request.data.get('provider', 'firebase')
+        email = request.data.get('email', '')
+        name = request.data.get('name', '')
+        phone_number = request.data.get('phone_number', '')
+        
         if not id_token:
             return Response({'error': 'No ID token provided'}, status=status.HTTP_400_BAD_REQUEST)
         
-        decoded_token = firebase_auth.verify_id_token(id_token)
-        firebase_uid = decoded_token['uid']
+        # Generate a random password
+        import string
+        import random
+        def generate_random_password(length=12):
+            characters = string.ascii_letters + string.digits + "!@#$%^&*()"
+            return ''.join(random.choice(characters) for _ in range(length))
         
-        email = decoded_token.get('email', '')
-        name = decoded_token.get('name', '')
-        phone = decoded_token.get('phone_number', '')
-        
-        username = email.split('@')[0] if email else f"user_{firebase_uid[:8]}"
-        
-        try:
-            if email:
-                user = User.objects.get(email=email)
-            else:
-                user = User.objects.get(username__startswith=f"user_{firebase_uid[:8]}")
-        except User.DoesNotExist:
-            user = User.objects.create_user(
-                username=username,
-                email=email or '',
-                password=User.objects.make_random_password() 
-            )
+        if provider in ['google', 'facebook']:
+            unique_id = email or f"{provider}_{id_token[:12]}"
+            username = email.split('@')[0] if email else f"{provider}_user_{uuid.uuid4().hex[:8]}"
+            base_username = username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1 
             
-            if name:
-                name_parts = name.split(' ', 1)
-                user.first_name = name_parts[0]
-                if len(name_parts) > 1:
-                    user.last_name = name_parts[1]
+            try:
+                if email:
+                    user = User.objects.get(email=email)
+                else:
+                    user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                # Use our custom function to generate a random password
+                random_password = generate_random_password()
+                user = User.objects.create_user(
+                    username=username,
+                    email=email or '',
+                    password=random_password
+                )
+                if name:
+                    name_parts = name.split(' ', 1)
+                    user.first_name = name_parts[0]
+                    if len(name_parts) > 1:
+                        user.last_name = name_parts[1]
+                
+                # Add phone number from social auth if provided
+                if phone_number:
+                    user.phone_number = phone_number
+                
+                # Set default values for BasicUser fields
+                user.language = User.LANGUAGE_ENGLISH
+                user.theme = User.THEME_LIGHT
+                user.location_permission = False
+                user.role = User.ROLE_USER
+                
                 user.save()
+
+        else: 
+            try: 
+                decoded_token = firebase_auth.verify_id_token(id_token)
+                firebase_uid = decoded_token['uid']
+        
+                email = decoded_token.get('email', '')
+                name = decoded_token.get('name', '')
+                phone = decoded_token.get('phone_number', '')
+                
+                phone_number = phone or phone_number
+        
+                username = email.split('@')[0] if email else f"user_{firebase_uid[:8]}"
+        
+                try:
+                    if email:
+                        user = User.objects.get(email=email)
+                    else:
+                        user = User.objects.get(username__startswith=f"user_{firebase_uid[:8]}")
+                except User.DoesNotExist:
+                    random_password = generate_random_password()
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email or '',
+                        password=random_password,
+                        phone_number=phone_number
+                    )
+            
+                    if name:
+                        name_parts = name.split(' ', 1)
+                        user.first_name = name_parts[0]
+                        if len(name_parts) > 1:
+                            user.last_name = name_parts[1]
+                    
+                   
+                    
+                    user.save()
+            except Exception as firebase_error:
+                return Response({'error': f"Firebase verification error: {str(firebase_error)}"}, 
+                              status=status.HTTP_400_BAD_REQUEST)
         
         refresh = RefreshToken.for_user(user)
         
@@ -227,19 +297,22 @@ def firebase_auth_view(request):
             'token': str(refresh.access_token),
             'refresh_token': str(refresh),
             'user': {
-                'id': User.id,
-                'username': User.username,
-                'email': User.email,
-                'first_name': User.first_name,
-                'last_name': User.last_name,
-                'phone_number': phone,
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'phone_number': user.phone_number or '',
+                'profile_photo': request.build_absolute_uri(user.profile_photo.url) if user.profile_photo else None,
             },
             'expiry_time': (datetime.now() + timedelta(minutes=60)).isoformat(),
         })
     
     except Exception as e:
+        print(f"Error in firebase_auth_view: {e}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
