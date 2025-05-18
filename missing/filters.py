@@ -5,6 +5,7 @@ from django.db import models
 class MissingPersonFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(method='filter_by_name')
     location = django_filters.CharFilter(method='filter_by_location')
+    name_or_location = django_filters.CharFilter(method='filter_by_name_or_location')
 
     gender = django_filters.ChoiceFilter(choices=GENDER)
     status = django_filters.ChoiceFilter(choices=CASE_STATUS)
@@ -32,11 +33,20 @@ class MissingPersonFilter(django_filters.FilterSet):
                 models.Q(last_seen_location__icontains=value) 
             )
         return queryset
+    def filter_by_name_or_location(self, queryset, name, value):
+        if value:
+            return queryset.filter(
+                models.Q(first_name__icontains=value) | 
+                models.Q(last_name__icontains=value) |
+                models.Q(last_seen_location__icontains=value)
+            )
+        return queryset
 
     class Meta:
         model = MissingPerson
         fields = [
           'name',
+          'name_or_location',
           'location',
           'gender',
           'status',
