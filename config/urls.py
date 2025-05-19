@@ -24,7 +24,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/accounts/', include('users.urls')),
     path('api/cases/', include('missing.urls')),
-    path('api/comments/', include('reports.urls')),
+    path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/location-sharing/', include('location_sharing.urls')),
 

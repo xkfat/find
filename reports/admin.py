@@ -33,7 +33,7 @@ class ReportAdmin(admin.ModelAdmin):
 
 
     def reporter(self, obj):
-        return obj.user.username
+            return obj.user.username if obj.user else "Anonymous"
     reporter.short_description = 'Reporter'
 
     def view_note_link(self, obj):

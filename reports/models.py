@@ -16,12 +16,12 @@ class Report(models.Model):
         (STATUS_UNVERIFIED, 'unverified'),
     ]
 
-    user = models.ForeignKey(BasicUser, on_delete=models.SET_NULL, null=True, blank=True)
+    user = models.ForeignKey(BasicUser, on_delete=models.SET_NULL, null=True, blank=True, default= "unknown")
     missing_person = models.ForeignKey(MissingPerson, on_delete=models.CASCADE, related_name='reports')
     note = models.TextField()
     date_submitted = models.DateTimeField(auto_now_add=True)
     report_status = models.CharField(max_length=10, choices=REPORT_CHOICES, default=STATUS_NEW)
 
     def __str__(self) :
-        return f"Report by {self.user or 'Anonymous'} about {self.missing_person} on ({self.date_submitted:%Y-%m-%d}) "
+        return f"Report by user about {self.missing_person} on ({self.date_submitted:%Y-%m-%d}) "
      

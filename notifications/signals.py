@@ -62,10 +62,12 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
 
 @receiver(report_created)
 def notify_new_report(sender, instance, **kwargs):
+    reporter_name = instance.user.username if instance.user else "Anonymous"
+
     report_msg = (
     f"📝 New report (ID {instance.pk}) on "
     f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
-    f"submitted by {instance.user.username}."
+    f"submitted by {reporter_name}." 
 )
     send_notification(
         User.objects.filter(is_staff=True),

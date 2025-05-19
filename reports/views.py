@@ -1,5 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
@@ -7,13 +7,24 @@ from .models import Report
 from .serializers import ReportSerializer
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def submit_report(request):
-    serializer = ReportSerializer(data=request.data, context={'request': request})
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    print(f"Request data: {request.data}")
 
-    serializer.save(user=request.user)
+    serializer = ReportSerializer(data=request.data)
+
+
+    if not serializer.is_valid():
+        print(f"Validation errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+   
+    if request.user.is_authenticated:
+        report = serializer.save(user=request.user)
+    else:
+        report = serializer.save(user=None)
+
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
