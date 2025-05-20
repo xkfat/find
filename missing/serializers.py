@@ -36,7 +36,8 @@ class MissingPersonSerializer(serializers.ModelSerializer):
             'reporter',
             'date_reported',
             'days_missing',
-            'updates'
+            'updates',
+            'contact_phone'
         ]
         
     def create(self, validated_data):

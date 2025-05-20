@@ -6,19 +6,17 @@ from django.shortcuts import get_object_or_404
 from .models import Report
 from .serializers import ReportSerializer
 
+
 @api_view(['POST'])
 def submit_report(request):
     print(f"Request data: {request.data}")
-
+    print(f"user: {request.user}")
     serializer = ReportSerializer(data=request.data)
 
 
     if not serializer.is_valid():
         print(f"Validation errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-
-
    
     if request.user.is_authenticated:
         report = serializer.save(user=request.user)

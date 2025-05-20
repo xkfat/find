@@ -24,6 +24,7 @@ def missing_person_list(request):
         return paginator.get_paginated_response(serializer.data)
     
     elif request.method == 'POST':
+        print(request.user)
         serializer = MissingPersonSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()

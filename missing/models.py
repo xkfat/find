@@ -39,11 +39,17 @@ class MissingPerson(models.Model):
     status = models.CharField(max_length=50, choices=CASE_STATUS, default='missing')  
     date_reported = models.DateTimeField(auto_now_add=True)
     submission_status = models.CharField(max_length=20, choices=SUBMISSION_STATUS, default='in_progress')
-
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} "
     
+
+    def save(self, *args, **kwargs):
+        if self.contact_phone is None or self.contact_phone == '':
+            self.contact_phone = "12345678"
+        super().save(*args, **kwargs)
+
 
     @property
     def full_name(self):
