@@ -21,12 +21,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with that email already exists.")
         return value
-    """
+  
     def validate_phone_number(self, value):
         if User.objects.filter(phone_number=value).exists():
             raise serializers.ValidationError("A user with that phone number already exists.")
         return value
-    """
+  
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("Username is already taken.")

@@ -122,18 +122,41 @@ def profile_user(request):
     user = request.user
 
     if request.method == 'GET':
-        serializer = ProfileSerializer(user , context={'request': request})
+        serializer = ProfileSerializer(user, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
         
     elif request.method == 'PATCH':
+        print(f"PATCH request data: {request.data}")
         serializer = ProfileSerializer(instance=user, data=request.data, partial=True, context={'request': request})
+        
         if serializer.is_valid():
-               serializer.save()
-               return Response({
-                 'message': 'Profile Updated!',
-                 'user': ProfileSerializer(user, context={'request':request}).data
-        }, status= status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'message': 'Profile Updated!',
+                    'user': ProfileSerializer(user, context={'request': request}).data
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                print(f"Error saving profile: {e}")
+                return Response({
+                    'success': False,
+                    'message': f'Error updating profile: {str(e)}',
+                    'user': ProfileSerializer(user, context={'request': request}).data
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            error_messages = {}
+            for field, errors in serializer.errors.items():
+                error_messages[field] = str(errors[0]) if errors else "Invalid data"
+            
+            print(f"Validation errors: {error_messages}")  
+            return Response({
+                'success': False,
+                'message': 'Validation failed',
+                'errors': error_messages,
+                'user': ProfileSerializer(user, context={'request': request}).data
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
 
 
 @api_view(['POST'])
