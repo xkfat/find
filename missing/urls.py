@@ -7,7 +7,7 @@ urlpatterns = [
     path('submitted-cases/', user_submitted_cases, name='my-submitted-cases'),
     path('<int:pk>/updates/', case_updates, name='case-updates'),
     path('<int:pk>/add-update/', add_case_update, name='add-case-update'),
-    path('<int:pk>/with-updates/', case_detail_with_updates, name='case-detail-with-updates'),
+    path('<int:case_id>/with-updates/', case_detail_with_updates, name='case-detail-with-updates'),
     path('<int:pk>/', missing_person_detail, name='missing-person-case-detail'),
 
 ]

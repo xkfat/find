@@ -68,8 +68,8 @@ def user_submitted_cases(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def case_updates(request, case_id):
-      case = get_object_or_404(MissingPerson, pk=case_id)
+def case_updates(request, pk):
+      case = get_object_or_404(MissingPerson, pk=pk)
 
       if case.reporter != request.user and not request.user.is_staff:
             return Response(
