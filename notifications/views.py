@@ -19,8 +19,8 @@ def list_notifications(request):
 
     if notification_type:
         qs = qs.filter(notification_type=notification_type)
-        qs = qs.order_by('-date_created')
-        serializer = NotificationSerializer(qs, many=True)
+    qs = qs.order_by('-date_created')
+    serializer = NotificationSerializer(qs, many=True)
     return Response(serializer.data)
 
 @api_view(['GET'])
@@ -39,6 +39,16 @@ def all_notifications(request):
     qs = Notification.objects.all().order_by('-date_created')
     serializer = NotificationSerializer(qs, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_notification(request, id):
+    try:
+        notification = get_object_or_404(Notification, id=id, user=request.user)
+        notification.delete()
+        return Response({'message': 'Notification deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        return Response({'error': 'Failed to delete notification'}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])

@@ -47,6 +47,8 @@ class LocationSharing(models.Model):
         on_delete=models.CASCADE, 
         related_name='shared_by'
     )
+    # NEW: Individual sharing control per friend
+    can_see_me = models.BooleanField(default=True)  # Whether this friend can see my location
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -55,7 +57,8 @@ class LocationSharing(models.Model):
         verbose_name_plural = 'Location Sharing'
     
     def __str__(self):
-        return f"{self.user.username} shares with {self.friend.username}"
+        visibility = "can see" if self.can_see_me else "cannot see"
+        return f"{self.friend.username} {visibility} {self.user.username}'s location"
 
 
 class UserLocation(models.Model):
@@ -63,33 +66,16 @@ class UserLocation(models.Model):
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
-    is_sharing = models.BooleanField(default=False)
-    share_with_all_friends = models.BooleanField(default=True)
+    # Simplified: Only one boolean for global sharing
+    is_sharing = models.BooleanField(default=False)  # Global location sharing toggle
     
     class Meta:
         verbose_name = 'User Location'
         verbose_name_plural = 'User Locations'
     
     def __str__(self):
-        return f"{self.user.username}'s location"
+        return f"{self.user.username}'s location ({'sharing' if self.is_sharing else 'not sharing'})"
     
     @property
     def has_location(self):
         return self.latitude is not None and self.longitude is not None
-
-
-class SelectedFriend(models.Model):
-    user_location = models.ForeignKey(
-        UserLocation, 
-        on_delete=models.CASCADE, 
-        related_name='selected_friends'
-    )
-    friend = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    
-    class Meta:
-        unique_together = ('user_location', 'friend')
-        verbose_name = 'Selected Friend'
-        verbose_name_plural = 'Selected Friends'
-    
-    def __str__(self):
-        return f"{self.user_location.user.username} selected {self.friend.username}"

@@ -37,7 +37,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         return
 
     help_msg = (
-        f"🔔 New missing person: \"{instance.first_name}  {instance.last_name} \". "
+        f" New missing person: \"{instance.first_name}  {instance.last_name} \". "
         "Click to view details and help if you can."
     )
     send_notification(

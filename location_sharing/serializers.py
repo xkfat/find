@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriend
+from .models import LocationRequest, LocationSharing, UserLocation
 
 User = get_user_model()
 
@@ -17,12 +17,11 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_profile_photo(self, obj):
         """Return full URL for profile photo or None"""
-        if obj.profile_photo:
+        if hasattr(obj, 'profile_photo') and obj.profile_photo:
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.profile_photo.url)
             else:
-                # Fallback if no request context
                 return f"{settings.MEDIA_URL}{obj.profile_photo}"
         return None
     
@@ -100,36 +99,41 @@ class LocationSharingSerializer(serializers.ModelSerializer):
     friend_details = UserSerializer(source='friend', read_only=True)
     is_sharing = serializers.SerializerMethodField()
     can_see_you = serializers.SerializerMethodField()
+    friend_id = serializers.IntegerField(source='friend.id', read_only=True)
 
     class Meta:
         model = LocationSharing
-        fields = ['id', 'user', 'friend', 'created_at', 'friend_details', 'is_sharing', 'can_see_you']
+        fields = ['id', 'user', 'friend', 'friend_id', 'created_at', 'friend_details', 'is_sharing', 'can_see_you']
         read_only_fields = ['user', 'created_at']
     
-
     def get_is_sharing(self, obj):
+        """Check if friend is sharing their location with me"""
         try:
             friend_location = UserLocation.objects.get(user=obj.friend)
-            return friend_location.is_sharing
+            if not friend_location.is_sharing:
+                return False
+            
+            # Check if there's a reverse relationship where friend shares with current user
+            reverse_sharing = LocationSharing.objects.filter(
+                user=obj.friend,
+                friend=obj.user
+            ).first()
+            
+            return reverse_sharing.can_see_me if reverse_sharing else False
         except UserLocation.DoesNotExist:
             return False
     
     def get_can_see_you(self, obj):
+        """Check if this friend can see current user's location"""
         try:
             user_location = UserLocation.objects.get(user=obj.user)
             if not user_location.is_sharing:
                 return False
             
-            if user_location.share_with_all_friends:
-                return True
-            
-            return SelectedFriend.objects.filter(
-                user_location=user_location,
-                friend=obj.friend
-            ).exists()
+            # Return the can_see_me field from this relationship
+            return obj.can_see_me
         except UserLocation.DoesNotExist:
             return False
-        
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -147,23 +151,6 @@ class UserLocationSerializer(serializers.ModelSerializer):
         model = UserLocation
         fields = [
             'id', 'user', 'username', 'latitude', 'longitude',
-            'last_updated', 'is_sharing', 'share_with_all_friends'
+            'last_updated', 'is_sharing'
         ]
         read_only_fields = ['user', 'last_updated']
-
-
-class SelectedFriendSerializer(serializers.ModelSerializer):
-    friend_details = UserSerializer(source='friend', read_only=True)
-    
-    class Meta:
-        model = SelectedFriend
-        fields = ['id', 'user_location', 'friend', 'friend_details']
-        read_only_fields = ['user_location']
-    
-    def to_representation(self, instance):
-        """Include request context for nested serializers"""
-        data = super().to_representation(instance)
-        request = self.context.get('request')
-        if request:
-            data['friend_details'] = UserSerializer(instance.friend, context={'request': request}).data
-        return data

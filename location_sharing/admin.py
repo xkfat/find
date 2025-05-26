@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriend
+from .models import LocationRequest, LocationSharing, UserLocation
 
 @admin.register(LocationRequest)
 class LocationRequestAdmin(admin.ModelAdmin):
@@ -23,28 +23,22 @@ class LocationRequestAdmin(admin.ModelAdmin):
 
 @admin.register(LocationSharing)
 class LocationSharingAdmin(admin.ModelAdmin):
-    list_display = ('user', 'friend', 'created_at')
-    list_filter = ('created_at',)
+    list_display = ('user', 'friend', 'can_see_me', 'created_at')
+    list_filter = ('can_see_me', 'created_at')
     search_fields = ('user__username', 'friend__username')
     date_hierarchy = 'created_at'
     readonly_fields = ('created_at',)
-
-
-class SelectedFriendInline(admin.TabularInline):
-    model = SelectedFriend
-    extra = 1
-    autocomplete_fields = ['friend']
+    list_editable = ('can_see_me',)
 
 
 @admin.register(UserLocation)
 class UserLocationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'latitude', 'longitude', 'last_updated', 
-                    'is_sharing', 'share_with_all_friends')
-    list_filter = ('is_sharing', 'share_with_all_friends', 'last_updated')
+    list_display = ('user', 'latitude', 'longitude', 'last_updated', 'is_sharing')
+    list_filter = ('is_sharing', 'last_updated')
     search_fields = ('user__username',)
     readonly_fields = ('last_updated',)
     date_hierarchy = 'last_updated'
-    inlines = [SelectedFriendInline]
+    list_editable = ('is_sharing',)
     fieldsets = (
         (None, {
             'fields': ('user',)
@@ -53,17 +47,6 @@ class UserLocationAdmin(admin.ModelAdmin):
             'fields': ('latitude', 'longitude', 'last_updated')
         }),
         ('Sharing Settings', {
-            'fields': ('is_sharing', 'share_with_all_friends')
+            'fields': ('is_sharing',)
         }),
     )
-
-
-@admin.register(SelectedFriend)
-class SelectedFriendAdmin(admin.ModelAdmin):
-    list_display = ('user_location_user', 'friend')
-    search_fields = ('user_location__user__username', 'friend__username')
-    autocomplete_fields = ['friend', 'user_location']
-    
-    def user_location_user(self, obj):
-        return obj.user_location.user.username
-    user_location_user.short_description = 'User'
