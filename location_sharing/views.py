@@ -6,20 +6,20 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .signals import location_alert
 from django.contrib.auth import get_user_model
-
+from django.db.models import Q 
 from .models import LocationRequest, LocationSharing, UserLocation, SelectedFriend
 from .serializers import (
     LocationRequestSerializer, 
     LocationSharingSerializer, 
     UserLocationSerializer,
-    SelectedFriendSerializer
+    SelectedFriendSerializer,
+    UserSearchSerializer,
 )
 
 # Location Request Views
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_pending_requests(request):
-    """Get all pending location sharing requests for the current user"""
     pending_requests = LocationRequest.objects.filter(
         receiver=request.user, 
         status='pending'
@@ -119,11 +119,8 @@ def get_friends(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def remove_friend(request, friend_id):
-    """Stop sharing location with a specific friend (bidirectional)"""
-    # Check if relationship exists
     sharing = get_object_or_404(LocationSharing, user=request.user, friend_id=friend_id)
     
-    # Remove both directions of location sharing
     LocationSharing.objects.filter(user=request.user, friend_id=friend_id).delete()
     LocationSharing.objects.filter(user_id=friend_id, friend=request.user).delete()
     
@@ -148,21 +145,17 @@ def get_friends_locations(request):
         friend=request.user
     ).values_list('user', flat=True)
     
-    # Get the current user's location settings
     user_location, _ = UserLocation.objects.get_or_create(user=request.user)
     
-    # Filter for friends who are actively sharing
     visible_locations = UserLocation.objects.filter(
         user__in=friends_sharing,
-        is_sharing=True,  # Only if sharing is enabled
-        latitude__isnull=False,  # Must have location data
+        is_sharing=True,  
+        latitude__isnull=False, 
         longitude__isnull=False
     )
     
-    # Filter for selected friends if not sharing with all
     limited_sharing_users = visible_locations.filter(share_with_all_friends=False)
     for loc in limited_sharing_users:
-        # Check if current user is a selected friend
         if not SelectedFriend.objects.filter(user_location=loc, friend=request.user).exists():
             visible_locations = visible_locations.exclude(id=loc.id)
     
@@ -173,7 +166,6 @@ def get_friends_locations(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_my_location(request):
-    """Update current user's location"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
     serializer = UserLocationSerializer(location, data=request.data, partial=True)
@@ -224,7 +216,6 @@ def update_sharing_settings(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_selected_friends(request):
-    """Get friends selected for limited sharing"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     selected = SelectedFriend.objects.filter(user_location=location)
     serializer = SelectedFriendSerializer(selected, many=True)
@@ -242,6 +233,57 @@ def get_sharing_settings(request):
         "sharing_mode": "all_friends" if location.share_with_all_friends else "selected_friends",
         "selected_friends_count": selected_count if not location.share_with_all_friends else None
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_users(request):
+    """Search for users excluding those with existing relationships"""
+    query = request.GET.get('q', '').strip()
+    
+    if not query:
+        return Response([], status=status.HTTP_200_OK)
+    
+    if len(query) < 1:
+        return Response(
+            {"detail": "Search query must be at least 1 characters"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get users who already have relationships with current user
+    excluded_user_ids = set()
+    
+    # Exclude current user
+    excluded_user_ids.add(request.user.id)
+    
+    # Exclude users with pending requests (both sent and received)
+    pending_requests = LocationRequest.objects.filter(
+        Q(sender=request.user) | Q(receiver=request.user),
+        status='pending'
+    )
+    for req in pending_requests:
+        excluded_user_ids.add(req.sender.id)
+        excluded_user_ids.add(req.receiver.id)
+    
+    # Exclude users already sharing location
+    existing_friends = LocationSharing.objects.filter(user=request.user)
+    for friendship in existing_friends:
+        excluded_user_ids.add(friendship.friend.id)
+    
+    # Search users by username or phone number (if you have phone_number field)
+    User = get_user_model()
+    users = User.objects.filter(
+        Q(username__icontains=query) | 
+        Q(first_name__icontains=query) | 
+        Q(last_name__icontains=query)
+        # Add this if you have phone_number field:
+        # | Q(phone_number__icontains=query)
+    ).exclude(
+        id__in=excluded_user_ids
+    )[:20]  # Limit to 20 results
+    
+    serializer = UserSearchSerializer(users, many=True, context={'request': request})
+    return Response(serializer.data)
 
 
 def find_user_by_identifier(identifier):

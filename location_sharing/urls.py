@@ -16,7 +16,8 @@ urlpatterns = [
     # Location data endpoints
     path('locations/', views.get_friends_locations, name='get_friends_locations'),
     path('locations/update/', views.update_my_location, name='update_my_location'),
-    
+    path('search-users/', views.search_users, name='search_users'),
+
     # Sharing settings endpoints
     path('settings/', views.update_sharing_settings, name='update_sharing_settings'),
     path('settings/selected-friends/', views.get_selected_friends, name='get_selected_friends'),
