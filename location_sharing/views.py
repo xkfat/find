@@ -112,7 +112,7 @@ def respond_to_request(request, request_id):
 @permission_classes([IsAuthenticated])
 def get_friends(request):
     sharing = LocationSharing.objects.filter(user=request.user)
-    serializer = LocationSharingSerializer(sharing, many=True)
+    serializer = LocationSharingSerializer(sharing, many=True, context={'request': request})
     return Response(serializer.data)
 
 

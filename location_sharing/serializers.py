@@ -98,14 +98,40 @@ class LocationRequestSerializer(serializers.ModelSerializer):
 class LocationSharingSerializer(serializers.ModelSerializer):
     """Serializer for location sharing relationships"""
     friend_details = UserSerializer(source='friend', read_only=True)
-    
+    is_sharing = serializers.SerializerMethodField()
+    can_see_you = serializers.SerializerMethodField()
+
     class Meta:
         model = LocationSharing
-        fields = ['id', 'user', 'friend', 'created_at', 'friend_details']
+        fields = ['id', 'user', 'friend', 'created_at', 'friend_details', 'is_sharing', 'can_see_you']
         read_only_fields = ['user', 'created_at']
     
+
+    def get_is_sharing(self, obj):
+        try:
+            friend_location = UserLocation.objects.get(user=obj.friend)
+            return friend_location.is_sharing
+        except UserLocation.DoesNotExist:
+            return False
+    
+    def get_can_see_you(self, obj):
+        try:
+            user_location = UserLocation.objects.get(user=obj.user)
+            if not user_location.is_sharing:
+                return False
+            
+            if user_location.share_with_all_friends:
+                return True
+            
+            return SelectedFriend.objects.filter(
+                user_location=user_location,
+                friend=obj.friend
+            ).exists()
+        except UserLocation.DoesNotExist:
+            return False
+        
+
     def to_representation(self, instance):
-        """Include request context for nested serializers"""
         data = super().to_representation(instance)
         request = self.context.get('request')
         if request:
