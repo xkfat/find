@@ -66,8 +66,7 @@ class UserLocation(models.Model):
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
-    # Simplified: Only one boolean for global sharing
-    is_sharing = models.BooleanField(default=False)  # Global location sharing toggle
+    is_sharing = models.BooleanField(default=False) 
     
     class Meta:
         verbose_name = 'User Location'

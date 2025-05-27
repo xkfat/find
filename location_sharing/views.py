@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from missing.models import MissingPerson
 from .signals import location_alert
 from django.contrib.auth import get_user_model
 from django.db.models import Q 
@@ -89,19 +91,17 @@ def respond_to_request(request, request_id):
     location_request.save()
     
     if response == 'accept':
-        # Create bidirectional location sharing (both can see each other by default)
         LocationSharing.objects.create(
             user=request.user, 
             friend=location_request.sender,
-            can_see_me=True  # Friend can see me by default
+            can_see_me=True  
         )
         LocationSharing.objects.create(
             user=location_request.sender, 
             friend=request.user,
-            can_see_me=True  # I can see friend by default
+            can_see_me=True  
         )
         
-        # Ensure both users have UserLocation objects
         UserLocation.objects.get_or_create(user=request.user)
         UserLocation.objects.get_or_create(user=location_request.sender)
         
@@ -121,7 +121,6 @@ def get_friends(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def remove_friend(request, friend_id):
-    # Remove both directions of the relationship
     LocationSharing.objects.filter(user=request.user, friend_id=friend_id).delete()
     LocationSharing.objects.filter(user_id=friend_id, friend=request.user).delete()
     
@@ -139,15 +138,14 @@ def send_alert(request, friend_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_friends_locations(request):
-    # Get friends who are sharing with me and have location data
     friends_sharing = LocationSharing.objects.filter(
         friend=request.user,
-        can_see_me=True  # Only friends who allow me to see them
+        can_see_me=True 
     ).values_list('user', flat=True)
     
     visible_locations = UserLocation.objects.filter(
         user__in=friends_sharing,
-        is_sharing=True,  # Friend must have global sharing enabled
+        is_sharing=True,  
         latitude__isnull=False, 
         longitude__isnull=False
     )
@@ -168,12 +166,9 @@ def update_my_location(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# NEW SIMPLIFIED ENDPOINTS
-
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def toggle_global_sharing(request):
-    """Toggle global location sharing (for settings screen)"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
     is_sharing = request.data.get('is_sharing')
@@ -195,7 +190,6 @@ def toggle_global_sharing(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def toggle_friend_sharing(request, friend_id):
-    """Toggle sharing with a specific friend"""
     sharing_relationship = get_object_or_404(
         LocationSharing, 
         user=request.user, 
@@ -221,7 +215,6 @@ def toggle_friend_sharing(request, friend_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_sharing_settings(request):
-    """Get current sharing settings"""
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
     return Response({
@@ -232,7 +225,6 @@ def get_sharing_settings(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def search_users(request):
-    """Search for users excluding those with existing relationships"""
     query = request.GET.get('q', '').strip()
     
     if not query:
@@ -244,13 +236,10 @@ def search_users(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Get users who already have relationships with current user
     excluded_user_ids = set()
     
-    # Exclude current user
     excluded_user_ids.add(request.user.id)
     
-    # Exclude users with pending requests (both sent and received)
     pending_requests = LocationRequest.objects.filter(
         Q(sender=request.user) | Q(receiver=request.user),
         status='pending'
@@ -259,12 +248,10 @@ def search_users(request):
         excluded_user_ids.add(req.sender.id)
         excluded_user_ids.add(req.receiver.id)
     
-    # Exclude users already sharing location
     existing_friends = LocationSharing.objects.filter(user=request.user)
     for friendship in existing_friends:
         excluded_user_ids.add(friendship.friend.id)
     
-    # Search users by username or name
     User = get_user_model()
     users = User.objects.filter(
         Q(username__icontains=query) | 
@@ -272,7 +259,7 @@ def search_users(request):
         Q(last_name__icontains=query)
     ).exclude(
         id__in=excluded_user_ids
-    )[:20]  # Limit to 20 results
+    )[:20]  
     
     serializer = UserSearchSerializer(users, many=True, context={'request': request})
     return Response(serializer.data)
@@ -287,3 +274,61 @@ def find_user_by_identifier(identifier):
     if hasattr(User, 'phone_number'):
         user = User.objects.filter(phone_number=identifier).first()
     return user
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_friends_locations(request):
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    recent_time = timezone.now() - timedelta(minutes=2)
+    
+    friends_sharing = LocationSharing.objects.filter(
+        friend=request.user,
+        can_see_me=True 
+    ).values_list('user', flat=True)
+    
+    visible_locations = UserLocation.objects.filter(
+        user__in=friends_sharing,
+        is_sharing=True, 
+        latitude__isnull=False, 
+        longitude__isnull=False,
+        last_updated__gte=recent_time  
+    )
+    
+    serializer = UserLocationSerializer(visible_locations, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_map_data(request):
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    missing_persons = MissingPerson.objects.filter(status='active').values(
+        'id', 'name', 'last_seen_lat', 'last_seen_lng', 'last_seen_date', 'case_number'
+    )
+    
+    recent_time = timezone.now() - timedelta(minutes=2)
+    friends_sharing = LocationSharing.objects.filter(
+        friend=request.user,
+        can_see_me=True
+    ).values_list('user', flat=True)
+    
+    user_locations = UserLocation.objects.filter(
+        user__in=friends_sharing,
+        is_sharing=True,
+        latitude__isnull=False,
+        longitude__isnull=False,
+        last_updated__gte=recent_time
+    ).select_related('user').values(
+        'user__username', 'user__first_name', 'user__last_name',
+        'latitude', 'longitude', 'last_updated'
+    )
+    
+    return Response({
+        'missing_persons': list(missing_persons),
+        'user_locations': list(user_locations),
+        'last_updated': timezone.now()
+    })

@@ -14,14 +14,12 @@ urlpatterns = [
     path('friends/<int:friend_id>/alert/', views.send_alert, name='send_alert'),
     path('friends/<int:friend_id>/toggle-sharing/', views.toggle_friend_sharing, name='toggle_friend_sharing'),
     
-    # Location data endpoints
     path('locations/', views.get_friends_locations, name='get_friends_locations'),
     path('locations/update/', views.update_my_location, name='update_my_location'),
-    
-    # User search
+    path('map-data/', views.get_map_data, name='get_map_data'),
+
     path('search-users/', views.search_users, name='search_users'),
 
-    # Simplified sharing settings - maintaining backward compatibility
     path('settings/', views.toggle_global_sharing, name='toggle_global_sharing'),  # For backward compatibility
     path('settings/global-sharing/', views.toggle_global_sharing, name='toggle_global_sharing'),
     path('settings/current/', views.get_sharing_settings, name='get_sharing_settings'),
