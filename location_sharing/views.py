@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.utils import timezone
+from datetime import timedelta
 
 from missing.models import MissingPerson
 from .signals import location_alert
@@ -16,7 +18,6 @@ from .serializers import (
     UserSearchSerializer,
 )
 
-# Location Request Views
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_pending_requests(request):
@@ -138,20 +139,60 @@ def send_alert(request, friend_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_friends_locations(request):
+   
+    
+    print(f"DEBUG: Getting friends locations for user {request.user.id} ({request.user.username})")
+    
     friends_sharing = LocationSharing.objects.filter(
-        friend=request.user,
-        can_see_me=True 
+        friend=request.user, 
+        can_see_me=True      
     ).values_list('user', flat=True)
+    
+    print(f"DEBUG: Found {len(friends_sharing)} friends sharing with current user")
+    
+    recent_time = timezone.now() - timedelta(minutes=30)
     
     visible_locations = UserLocation.objects.filter(
         user__in=friends_sharing,
         is_sharing=True,  
         latitude__isnull=False, 
-        longitude__isnull=False
+        longitude__isnull=False,
+        last_updated__gte=recent_time 
     )
     
-    serializer = UserLocationSerializer(visible_locations, many=True)
-    return Response(serializer.data)
+    print(f"DEBUG: Found {visible_locations.count()} recent visible locations")
+    
+    now = timezone.now()
+    locations_data = []
+    
+    for location in visible_locations:
+        time_diff = now - location.last_updated
+        minutes_ago = int(time_diff.total_seconds() / 60)
+        
+        if minutes_ago <= 2:
+            freshness = 'live'  
+            display_text = 'Live'
+        else:
+            freshness = 'recent'  
+            display_text = f"{minutes_ago}m ago"
+        
+        location_data = {
+            'id': location.id,
+            'user': location.user.id,
+            'username': location.user.username,
+            'latitude': str(location.latitude),
+            'longitude': str(location.longitude),
+            'last_updated': location.last_updated.isoformat(),
+            'is_sharing': location.is_sharing,
+            'minutes_ago': minutes_ago,
+            'freshness': freshness,
+            'display_text': display_text
+        }
+        
+        locations_data.append(location_data)
+        print(f"DEBUG: Location for {location.user.username}: {location.latitude}, {location.longitude} ({minutes_ago}m ago - {freshness})")
+    
+    return Response(locations_data)
 
 
 @api_view(['POST'])
@@ -159,11 +200,15 @@ def get_friends_locations(request):
 def update_my_location(request):
     location, created = UserLocation.objects.get_or_create(user=request.user)
     
-    serializer = UserLocationSerializer(location, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    location.is_sharing = True
+    location.latitude = request.data.get('latitude')
+    location.longitude = request.data.get('longitude')
+    location.save()
+    
+    print(f"DEBUG: Updated location for {request.user.username}: {location.latitude}, {location.longitude}")
+    
+    serializer = UserLocationSerializer(location)
+    return Response(serializer.data)
 
 
 @api_view(['PUT'])
@@ -275,42 +320,17 @@ def find_user_by_identifier(identifier):
         user = User.objects.filter(phone_number=identifier).first()
     return user
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_friends_locations(request):
-    from django.utils import timezone
-    from datetime import timedelta
-    
-    recent_time = timezone.now() - timedelta(minutes=2)
-    
-    friends_sharing = LocationSharing.objects.filter(
-        friend=request.user,
-        can_see_me=True 
-    ).values_list('user', flat=True)
-    
-    visible_locations = UserLocation.objects.filter(
-        user__in=friends_sharing,
-        is_sharing=True, 
-        latitude__isnull=False, 
-        longitude__isnull=False,
-        last_updated__gte=recent_time  
-    )
-    
-    serializer = UserLocationSerializer(visible_locations, many=True)
-    return Response(serializer.data)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_map_data(request):
-    from django.utils import timezone
-    from datetime import timedelta
+
     
     missing_persons = MissingPerson.objects.filter(status='active').values(
         'id', 'name', 'last_seen_lat', 'last_seen_lng', 'last_seen_date', 'case_number'
     )
     
-    recent_time = timezone.now() - timedelta(minutes=2)
+    recent_time = timezone.now() - timedelta(minutes=15)
     friends_sharing = LocationSharing.objects.filter(
         friend=request.user,
         can_see_me=True
@@ -322,13 +342,37 @@ def get_map_data(request):
         latitude__isnull=False,
         longitude__isnull=False,
         last_updated__gte=recent_time
-    ).select_related('user').values(
-        'user__username', 'user__first_name', 'user__last_name',
-        'latitude', 'longitude', 'last_updated'
-    )
+    ).select_related('user')
+    
+    now = timezone.now()
+    locations_list = []
+    
+    for location in user_locations:
+        time_diff = now - location.last_updated
+        minutes_ago = int(time_diff.total_seconds() / 60)
+        
+        if minutes_ago <= 2:
+            freshness = 'live'
+            display_text = 'Live'
+        else:
+            freshness = 'recent'
+            display_text = f"{minutes_ago}m ago"
+        
+        location_data = {
+            'username': location.user.username,
+            'first_name': location.user.first_name or '',
+            'last_name': location.user.last_name or '',
+            'latitude': location.latitude,
+            'longitude': location.longitude,
+            'last_updated': location.last_updated.isoformat(),
+            'minutes_ago': minutes_ago,
+            'freshness': freshness,
+            'display_text': display_text
+        }
+        locations_list.append(location_data)
     
     return Response({
         'missing_persons': list(missing_persons),
-        'user_locations': list(user_locations),
+        'user_locations': locations_list,
         'last_updated': timezone.now()
     })
