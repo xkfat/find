@@ -18,7 +18,6 @@ class Notification(models.Model):
         ('location_alert', 'Location Alert'),
     )
 
-    
     user = models.ForeignKey(BasicUser, on_delete=models.CASCADE, related_name='notification')
     message = models.TextField()
     is_read = models.BooleanField(default=False)
@@ -31,30 +30,73 @@ class Notification(models.Model):
     def __str__(self):
         return f"Sent to {self.user.username}"
 
+    @property
+    def title(self):
+        """Generate title based on notification type"""
+        title_map = {
+            'missing_person': 'New Missing Person',
+            'location_request': 'Location Sharing Request',
+            'location_response': 'Location Sharing Accepted',
+            'location_alert': 'Location Sharing Alert',
+            'case_update': 'Case Update',
+            'report': 'Report Update',
+            'system': 'FindThem Notification',
+        }
+        return title_map.get(self.notification_type, 'Notification')
 
 
 @receiver(post_save, sender=Notification)
 def send_push_on_create(sender, instance, created, **kwargs):
-    print(f"Signal triggered! Created: {created}")
+    print(f"🔔 Signal triggered! Created: {created}")
     
     if created:
         try:
-            print(f"Sending notification to user: {instance.user.username}")
+            print(f"📱 Sending notification to user: {instance.user.username}")
+            print(f"📋 Notification type: {instance.notification_type}")
+            print(f"📝 Title: {instance.title}")
             
             # Check if user has FCM token
-            fcm_token = instance.user.fcm
-            print(f"User FCM token: {fcm_token[:20] if fcm_token else 'None'}...")
+            fcm_token = getattr(instance.user, 'fcm', None)
+            print(f"🔑 User FCM token: {fcm_token[:20] if fcm_token else 'None'}...")
             
             if fcm_token:
+                # Prepare comprehensive data for Flutter
+                push_data = {
+                    'notification_id': str(instance.id),
+                    'notification_type': instance.notification_type,
+                    'user_id': str(instance.user.id),
+                    'date_created': instance.date_created.isoformat(),
+                    'message': instance.message,
+                    'title': instance.title,
+                    'body': instance.message,
+                    'sender_name': instance.user.username,
+                    'receiver_name': instance.user.username,
+                    'type': instance.notification_type,  # For compatibility
+                    'id': str(instance.id),  # For compatibility
+                }
+                
+                # Add target-specific data if available
+                if instance.target:
+                    push_data['target_id'] = str(instance.object_id)
+                    push_data['target_model'] = instance.content_type.model
+                    
+                    # Add specific data based on target type
+                    if hasattr(instance.target, 'id'):
+                        if instance.content_type.model == 'missingperson':
+                            push_data['case_id'] = str(instance.target.id)
+                        elif instance.content_type.model == 'report':
+                            push_data['report_id'] = str(instance.target.id)
+                        elif instance.content_type.model == 'locationrequest':
+                            push_data['request_id'] = str(instance.target.id)
+                
+                print(f"📦 Push data keys: {list(push_data.keys())}")
+                
                 message = messaging.Message(
                     notification=messaging.Notification(
                         title=instance.title,
                         body=instance.message,
                     ),
-                    data={
-                        'type': instance.notification_type,
-                        'id': str(instance.id),
-                    },
+                    data=push_data,
                     token=fcm_token,
                 )
                 
