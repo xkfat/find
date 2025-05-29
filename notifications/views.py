@@ -1,3 +1,4 @@
+# notifications/views.py
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -6,78 +7,167 @@ from django.shortcuts import get_object_or_404
 from .models import Notification
 from users.models import BasicUser
 from .serializers import NotificationSerializer
+from .signals import send_notification
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_notifications(request):
-    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    """Get user's notifications and mark unread ones as read"""
+    # Mark unread notifications as read
+    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+    if unread_count > 0:
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        logger.info(f"Marked {unread_count} notifications as read for {request.user.username}")
 
+    # Get notifications with optional filtering
     qs = Notification.objects.filter(user=request.user)
     notification_type = request.query_params.get('type')
-
+    
     if notification_type:
         qs = qs.filter(notification_type=notification_type)
+    
     qs = qs.order_by('-date_created')
     serializer = NotificationSerializer(qs, many=True)
-    return Response(serializer.data)
+    
+    return Response({
+        'notifications': serializer.data,
+        'marked_read': unread_count
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def unread_count(request):
+    """Get count of unread notifications"""
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({'unread_count': count})
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def view_notification(request, id):
+    """Get specific notification and mark as read"""
     notification = get_object_or_404(Notification, id=id, user=request.user)
+    
     if not notification.is_read:
         notification.is_read = True
         notification.save()
+        logger.info(f"Notification {id} marked as read for {request.user.username}")
+    
     serializer = NotificationSerializer(notification)
     return Response(serializer.data)
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def all_notifications(request):
+    """Admin view: Get all notifications"""
     qs = Notification.objects.all().order_by('-date_created')
+    
+    # Optional filtering
+    user_id = request.query_params.get('user_id')
+    notification_type = request.query_params.get('type')
+    
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    if notification_type:
+        qs = qs.filter(notification_type=notification_type)
+    
     serializer = NotificationSerializer(qs, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.data)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_notification(request, id):
+    """Delete a specific notification"""
     try:
         notification = get_object_or_404(Notification, id=id, user=request.user)
         notification.delete()
-        return Response({'message': 'Notification deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+        logger.info(f"Notification {id} deleted by {request.user.username}")
+        return Response({'message': 'Notification deleted successfully'}, 
+                       status=status.HTTP_204_NO_CONTENT)
     except Exception as e:
-        return Response({'error': 'Failed to delete notification'}, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"Failed to delete notification {id}: {str(e)}")
+        return Response({'error': 'Failed to delete notification'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def clear_all_notifications(request):
+    """Delete all notifications for current user"""
+    try:
+        count = Notification.objects.filter(user=request.user).count()
+        Notification.objects.filter(user=request.user).delete()
+        logger.info(f"Cleared {count} notifications for {request.user.username}")
+        return Response({'message': f'Cleared {count} notifications'}, 
+                       status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Failed to clear notifications for {request.user.username}: {str(e)}")
+        return Response({'error': 'Failed to clear notifications'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def send_notification(request):
+def send_custom_notification(request):
+    """Admin: Send custom notification with push notification support"""
     message = request.data.get('message')
     receiver = request.data.get('receiver')
-    notification_type = request.data.get('notification_type', 'system') 
+    notification_type = request.data.get('notification_type', 'system')
+    push_title = request.data.get('push_title', 'FindThem')
+    
+    # Validation
     if not message:
-        return Response({'error': 'Message is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-
+        return Response({'error': 'Message is required.'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
     valid_types = {choice[0] for choice in Notification.NOTIFICATION_TYPES}
     if notification_type not in valid_types:
-        return Response({'error': 'Invalid notification_type.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-    
-    if receiver == 'all':
-        users = BasicUser.objects.all()
-        for user in users: 
-            Notification.objects.create(user=user, message=message, notification_type=notification_type)
-        return Response({'message': 'notification sent to all users'}, status=status.HTTP_201_CREATED)
+        return Response({'error': 'Invalid notification_type.'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        user_id = int(receiver)
-    except (TypeError, ValueError):
-        return Response({'error': 'Invalid receiver ID.'}, status=status.HTTP_400_BAD_REQUEST)
-    
-
-    user = get_object_or_404(BasicUser, id=user_id)
-    Notification.objects.create(user=user, message=message, notification_type=notification_type)
-    return Response({'message': 'notification sent successfully'}, status=status.HTTP_201_CREATED)
-
+        if receiver == 'all':
+            # Send to all users
+            users = BasicUser.objects.all()
+            user_count = users.count()
+            
+            send_notification(
+                users=users,
+                message=message,
+                notification_type=notification_type,
+                push_title=push_title
+            )
+            
+            logger.info(f"Admin {request.user.username} sent notification to all {user_count} users")
+            return Response({
+                'message': f'Notification sent to all {user_count} users',
+                'recipients': user_count
+            }, status=status.HTTP_201_CREATED)
+        
+        else:
+            # Send to specific user
+            try:
+                user_id = int(receiver)
+            except (TypeError, ValueError):
+                return Response({'error': 'Invalid receiver ID.'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            user = get_object_or_404(BasicUser, id=user_id)
+            
+            send_notification(
+                users=[user],
+                message=message,
+                notification_type=notification_type,
+                push_title=push_title
+            )
+            
+            logger.info(f"Admin {request.user.username} sent notification to {user.username}")
+            return Response({
+                'message': f'Notification sent to {user.username}',
+                'recipient': user.username
+            }, status=status.HTTP_201_CREATED)
+            
+    except Exception as e:
+        logger.error(f"Failed to send custom notification: {str(e)}")
+        return Response({'error': 'Failed to send notification'}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)

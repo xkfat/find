@@ -15,7 +15,9 @@ from datetime import datetime, timedelta
 import uuid
 import string
 import random
+import logging
 
+logger = logging.getLogger(__name__)
 
 def generate_random_password(length=12):
             characters = string.ascii_letters + string.digits + string.punctuation
@@ -383,3 +385,46 @@ def update_fcm_token(request):
         request.user.save()
         return Response({'success': True})
     return Response({'error': 'FCM token required'}, status=400)
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_fcm_token(request):
+    try:
+        fcm_token = request.data.get('fcm_token')
+        if fcm_token:
+            # Update user's FCM token
+            request.user.fcm = fcm_token
+            request.user.save()
+            return Response({'success': True})
+        return Response({'error': 'No FCM token provided'}, status=400)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_fcm_token(request):
+    """Remove user's FCM token (useful for logout)"""
+    try:
+        request.user.fcm = None
+        request.user.save(update_fields=['fcm'])
+        
+        logger.info(f"FCM token removed for user {request.user.username}")
+        return Response({'message': 'FCM token removed successfully'}, 
+                       status=status.HTTP_200_OK)
+                       
+    except Exception as e:
+        logger.error(f"Failed to remove FCM token for {request.user.username}: {str(e)}")
+        return Response({'error': 'Failed to remove FCM token'}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_fcm_status(request):
+    """Check if user has FCM token registered"""
+    has_token = bool(request.user.fcm)
+    return Response({
+        'has_fcm_token': has_token,
+        'username': request.user.username
+    })
