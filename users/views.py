@@ -373,3 +373,13 @@ def delete_account(request):
         return Response({"success": False, "message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({"success": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_fcm_token(request):
+    fcm_token = request.data.get('fcm')
+    if fcm_token:
+        request.user.fcm = fcm_token
+        request.user.save()
+        return Response({'success': True})
+    return Response({'error': 'FCM token required'}, status=400)

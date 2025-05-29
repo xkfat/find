@@ -1,8 +1,10 @@
+# notifications/signals.py - Simple version
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import Notification
+from .firebase import send_push_notification
 from missing.models import MissingPerson
 from missing.signals import case_status_changed
 from location_sharing.signals import location_alert, location_request_sent, location_request_responded
@@ -29,6 +31,13 @@ def send_notification(users, message, target_instance=None, notification_type='s
             object_id=oid,
             notification_type=notification_type
         )
+        
+        if u.fcm:
+            send_push_notification(
+                title="FindThem", 
+                body=message, 
+                fcm=u.fcm
+            )
 
 
 @receiver(post_save, sender=MissingPerson)
@@ -37,7 +46,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         return
 
     help_msg = (
-        f" New missing person: \"{instance.first_name}  {instance.last_name} \". "
+        f"New missing person: \"{instance.first_name} {instance.last_name}\". "
         "Click to view details and help if you can."
     )
     send_notification(
@@ -45,18 +54,17 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         help_msg,
         target_instance=instance,
         notification_type='missing_person'
-
     )
 
     admin_msg = (
-        f"📢 Admin alert: MissingPerson \"{instance.first_name}  {instance.last_name}\" "
-        f"(ID {instance.pk}) submitted by {instance.reporter.username}.")
+        f"📢 Admin alert: MissingPerson \"{instance.first_name} {instance.last_name}\" "
+        f"(ID {instance.pk}) submitted by {instance.reporter.username}."
+    )
     send_notification(
         User.objects.filter(is_staff=True),
         admin_msg,
         target_instance=instance,
         notification_type='missing_person'
-
     )
 
 
@@ -65,10 +73,10 @@ def notify_new_report(sender, instance, **kwargs):
     reporter_name = instance.user.username if instance.user else "Anonymous"
 
     report_msg = (
-    f"📝 New report (ID {instance.pk}) on "
-    f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
-    f"submitted by {reporter_name}." 
-)
+        f"📝 New report (ID {instance.pk}) on "
+        f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
+        f"submitted by {reporter_name}."
+    )
     send_notification(
         User.objects.filter(is_staff=True),
         report_msg,
@@ -86,6 +94,7 @@ def notify_new_report(sender, instance, **kwargs):
             notification_type='case_update'
         )
 
+
 @receiver(case_status_changed)
 def notify_case_status_change(sender, instance, old_status, new_status, update, **kwargs):
     if instance.reporter:
@@ -96,20 +105,24 @@ def notify_case_status_change(sender, instance, old_status, new_status, update, 
             notification_type='case_update'
         )
 
+
 @receiver(location_request_sent)
 def notify_location_request_sent(sender, instance, **kwargs):
+    message = f"{instance.sender.username} has sent you a location sharing request."
     send_notification(
         instance.receiver,
-        f"{instance.sender.username} has sent you a location sharing request.",
+        message,
         target_instance=instance,
         notification_type='location_request'
     )
 
+
 @receiver(location_request_responded)
 def notify_location_request_responded(sender, instance, new_status, **kwargs):
+    message = f"{instance.receiver.username} has {new_status} your location sharing request."
     send_notification(
         instance.sender,
-        f"{instance.receiver.username} has {new_status} your location sharing request.",
+        message,
         target_instance=instance,
         notification_type='location_response'
     )
@@ -117,9 +130,10 @@ def notify_location_request_responded(sender, instance, new_status, **kwargs):
 
 @receiver(location_alert)
 def notify_location_alert(sender, instance, recipient, **kwargs):
+    message = f"{instance.username} sent you a location alert."
     send_notification(
         recipient,
-        f"{instance.username} sent you a location alert.",
+        message,
         target_instance=instance,
         notification_type='location_alert'
     )

@@ -28,13 +28,14 @@ class BasicUser(AbstractUser):
     (THEME_DARK, 'Dark'),
  ]
 
- phone_number = models.CharField(max_length=15, unique=True, null=True, blank=True)
+ phone_number = models.CharField(max_length=15, null=True, blank=True)
  profile_photo = models.ImageField(upload_to='profiles/', null=True, blank=True)
  language = models.CharField(max_length=10,  choices=LANGUAGE_CHOICES, default=LANGUAGE_ENGLISH)
  theme = models.CharField(max_length=10, choices=THEME_CHOICES, default=THEME_LIGHT)
  location_permission = models.BooleanField(default=False)
  role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_USER)
- 
+ fcm = models.TextField(blank=True, null=True, help_text="Firebase Cloud Messaging token")
+
  
  def __str__(self):
           return f"{self.username} ({self.role})"

@@ -10,8 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
+import firebase_admin
+from firebase_admin import credentials
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -132,6 +135,10 @@ ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2']
 AUTH_PASSWORD_VALIDATORS = [
    
 ]
+
+# configure push notification FCM
+cred = credentials.Certificate(os.path.join(BASE_DIR, 'findthem-90a3d-firebase-adminsdk-fbsvc-caeda13757.json'))
+firebase_admin.initialize_app(cred)
 
 
 # Internationalization
