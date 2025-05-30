@@ -1,4 +1,3 @@
-# notifications/views.py
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -15,14 +14,12 @@ logger = logging.getLogger(__name__)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_notifications(request):
-    """Get user's notifications and mark unread ones as read"""
-    # Mark unread notifications as read
+   
     unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
     if unread_count > 0:
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
         logger.info(f"Marked {unread_count} notifications as read for {request.user.username}")
 
-    # Get notifications with optional filtering
     qs = Notification.objects.filter(user=request.user)
     notification_type = request.query_params.get('type')
     
@@ -40,14 +37,12 @@ def list_notifications(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def unread_count(request):
-    """Get count of unread notifications"""
     count = Notification.objects.filter(user=request.user, is_read=False).count()
     return Response({'unread_count': count})
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def view_notification(request, id):
-    """Get specific notification and mark as read"""
     notification = get_object_or_404(Notification, id=id, user=request.user)
     
     if not notification.is_read:
@@ -61,10 +56,8 @@ def view_notification(request, id):
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def all_notifications(request):
-    """Admin view: Get all notifications"""
     qs = Notification.objects.all().order_by('-date_created')
     
-    # Optional filtering
     user_id = request.query_params.get('user_id')
     notification_type = request.query_params.get('type')
     
@@ -79,7 +72,6 @@ def all_notifications(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_notification(request, id):
-    """Delete a specific notification"""
     try:
         notification = get_object_or_404(Notification, id=id, user=request.user)
         notification.delete()
@@ -94,7 +86,6 @@ def delete_notification(request, id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def clear_all_notifications(request):
-    """Delete all notifications for current user"""
     try:
         count = Notification.objects.filter(user=request.user).count()
         Notification.objects.filter(user=request.user).delete()
@@ -109,13 +100,11 @@ def clear_all_notifications(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def send_custom_notification(request):
-    """Admin: Send custom notification with push notification support"""
     message = request.data.get('message')
     receiver = request.data.get('receiver')
     notification_type = request.data.get('notification_type', 'system')
     push_title = request.data.get('push_title', 'FindThem')
     
-    # Validation
     if not message:
         return Response({'error': 'Message is required.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
@@ -127,7 +116,6 @@ def send_custom_notification(request):
     
     try:
         if receiver == 'all':
-            # Send to all users
             users = BasicUser.objects.all()
             user_count = users.count()
             
@@ -145,7 +133,6 @@ def send_custom_notification(request):
             }, status=status.HTTP_201_CREATED)
         
         else:
-            # Send to specific user
             try:
                 user_id = int(receiver)
             except (TypeError, ValueError):
