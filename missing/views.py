@@ -12,10 +12,10 @@ from .filters import MissingPersonFilter
 import cv2
 import numpy as np
 import os
+import threading
 
 
 def auto_face_match_on_creation(new_person):
-    """Automatically check for face matches when a new case is created"""
     import face_recognition
     
     if not new_person.photo:
@@ -81,6 +81,35 @@ def auto_face_match_on_creation(new_person):
         return []
 
 
+def process_face_matching_background(person_id):
+    try:
+        person = MissingPerson.objects.get(id=person_id)
+        face_matches = auto_face_match_on_creation(person)
+        
+        if face_matches:
+            from notifications.signals import send_notification
+            from django.contrib.auth import get_user_model
+            
+            User = get_user_model()
+            admin_users = User.objects.filter(is_staff=True)
+            
+            message = f"🔍 {len(face_matches)} potential face matches found for {person.full_name}. Please review."
+            
+            send_notification(
+                users=admin_users,
+                message=message,
+                target_instance=person,
+                notification_type='missing_person',
+                push_title="Face Match Alert",
+                push_data={'person_id': str(person.id), 'match_count': len(face_matches)}
+            )
+            
+        print(f"✅ Face matching complete: {len(face_matches)} matches for {person.full_name}")
+        
+    except Exception as e:
+        print(f"❌ Background face matching error: {e}")
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticatedOrReadOnly])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -99,25 +128,21 @@ def missing_person_list(request):
         serializer.is_valid(raise_exception=True)
         
         new_person = serializer.save()
-        face_matches = auto_face_match_on_creation(new_person)
+        
+        # 🚀 START BACKGROUND PROCESSING
+        threading.Thread(
+            target=process_face_matching_background,
+            args=(new_person.id,),
+            daemon=True
+        ).start()
         
         response_data = serializer.data
-        
-        if face_matches:
-            response_data['face_matches'] = {
-                'found': True,
-                'count': len(face_matches),
-                'matches': face_matches,
-                'message': f'Found {len(face_matches)} potential matches (45%+ similarity, same gender)',
-                'note': 'These matches need admin review and verification'
-            }
-        else:
-            response_data['face_matches'] = {
-                'found': False,
-                'count': 0,
-                'matches': [],
-                'message': 'No similar faces found'
-            }
+        response_data['face_matches'] = {
+            'found': False,
+            'count': 0,
+            'matches': [],
+            'message': 'Case submitted successfully!'
+        }
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
