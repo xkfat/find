@@ -6,7 +6,6 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status
 from django.conf import settings
-from ai_matches.models import AIMatch
 from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
 from .models import MissingPerson, CaseUpdate
 from .filters import MissingPersonFilter
@@ -133,45 +132,6 @@ def auto_face_match_on_creation(new_person):
         print(f"Error in auto face matching: {e}")
         return []
 
-def process_face_matching_background(person_id):
-    """Background task to process face matching and send notifications"""
-    try:
-        person = MissingPerson.objects.get(id=person_id)
-        print(f"🔄 Starting background AI face matching for {person.full_name}...")
-        
-        face_matches = auto_face_match_on_creation(person)
-        
-        if face_matches:
-            try:
-                from notifications.signals import send_notification
-                from django.contrib.auth import get_user_model
-                
-                User = get_user_model()
-                admin_users = User.objects.filter(is_staff=True)
-                
-                message = f"🔍 {len(face_matches)} potential face matches found for {person.full_name}. Please review."
-                
-                send_notification(
-                    users=admin_users,
-                    message=message,
-                    target_instance=person,
-                    notification_type='missing_person',
-                    push_title="Face Match Alert",
-                    push_data={'person_id': str(person.id), 'match_count': len(face_matches)}
-                )
-                print(f"📧 Notification sent to {admin_users.count()} admin users")
-                
-            except Exception as e:
-                print(f"⚠️ Error sending notification: {e}")
-            
-        print(f"✅ Background face matching complete: {len(face_matches)} matches for {person.full_name}")
-        
-    except MissingPerson.DoesNotExist:
-        print(f"❌ Person with ID {person_id} not found")
-    except Exception as e:
-        print(f"❌ Background face matching error: {e}")
-
-
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticatedOrReadOnly])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -189,6 +149,7 @@ def missing_person_list(request):
         serializer = MissingPersonSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         
+        # Create the missing person - this will trigger the signal
         new_person = serializer.save()
         print(f"✅ New missing person case created: {new_person.full_name} (ID: {new_person.id})")
         
@@ -196,30 +157,19 @@ def missing_person_list(request):
         response_data = serializer.data
         response_data['message'] = f"Missing person case for {new_person.full_name} has been successfully created."
         
-        # Check if photo exists for AI processing
+        # Check if photo exists for AI processing feedback
         if new_person.photo:
             response_data['ai_processing'] = {
                 'status': 'initiated',
                 'message': 'AI face matching has been started in the background. You will be notified if any matches are found.',
                 'note': 'This process may take a few minutes depending on the number of existing cases.'
             }
-            
-            # Start AI processing in background thread
-            print(f"🚀 Starting background AI processing for {new_person.full_name}")
-            thread = threading.Thread(
-                target=process_face_matching_background, 
-                args=(new_person.id,),
-                daemon=True
-            )
-            thread.start()
-            
         else:
             response_data['ai_processing'] = {
                 'status': 'skipped',
                 'message': 'No photo provided - AI face matching skipped.',
                 'note': 'Upload a photo later to enable face matching capabilities.'
             }
-            print(f"⏭️ No photo provided for {new_person.full_name}, skipping AI processing")
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -243,15 +193,11 @@ def missing_person_detail(request, pk):
             old_photo = missing.photo
             updated_person = serializer.save()
             
-            # If photo was added or changed, trigger AI matching
+            # If photo was added or changed, trigger AI matching via signal
+            # Note: The signal will handle this automatically when the instance is saved
             if updated_person.photo and (not old_photo or str(updated_person.photo) != str(old_photo)):
-                print(f"🔄 Photo updated for {updated_person.full_name}, triggering AI matching")
-                thread = threading.Thread(
-                    target=process_face_matching_background, 
-                    args=(updated_person.id,),
-                    daemon=True
-                )
-                thread.start()
+                print(f"🔄 Photo updated for {updated_person.full_name}")
+                # The post_save signal will handle the AI processing
             
             return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -259,14 +205,12 @@ def missing_person_detail(request, pk):
             missing.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_submitted_cases(request):
     qs = MissingPerson.objects.filter(reporter=request.user).order_by('-date_reported')
     serializer = SubmittedCaseListSerializer(qs, many=True, context={'request': request})
     return Response(serializer.data)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -282,7 +226,6 @@ def case_updates(request, pk):
     updates = CaseUpdate.objects.filter(case=case)
     serializer = CaseUpdateSerializer(updates, many=True)
     return Response(serializer.data)
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -306,7 +249,6 @@ def add_case_update(request, case_id):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

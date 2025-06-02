@@ -132,29 +132,59 @@ def send_custom_notification(request):
                 'recipients': user_count
             }, status=status.HTTP_201_CREATED)
         
-        else:
-            try:
-                user_id = int(receiver)
-            except (TypeError, ValueError):
-                return Response({'error': 'Invalid receiver ID.'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-            
-            user = get_object_or_404(BasicUser, id=user_id)
+        elif receiver == 'staff':
+            # Handle staff only option
+            users = BasicUser.objects.filter(is_staff=True)
+            user_count = users.count()
             
             send_notification(
-                users=[user],
+                users=users,
                 message=message,
                 notification_type=notification_type,
                 push_title=push_title
             )
             
-            logger.info(f"Admin {request.user.username} sent notification to {user.username}")
+            logger.info(f"Admin {request.user.username} sent notification to {user_count} staff users")
             return Response({
-                'message': f'Notification sent to {user.username}',
-                'recipient': user.username
+                'message': f'Notification sent to {user_count} staff users',
+                'recipients': user_count
+            }, status=status.HTTP_201_CREATED)
+        
+        else:
+            # Handle specific users (array of IDs)
+            if isinstance(receiver, list):
+                user_ids = receiver
+            else:
+                # Single user ID
+                try:
+                    user_ids = [int(receiver)]
+                except (TypeError, ValueError):
+                    return Response({'error': 'Invalid receiver format.'}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get all users with the specified IDs
+            users = BasicUser.objects.filter(id__in=user_ids)
+            user_count = users.count()
+            
+            if user_count == 0:
+                return Response({'error': 'No valid users found with provided IDs.'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            send_notification(
+                users=users,
+                message=message,
+                notification_type=notification_type,
+                push_title=push_title
+            )
+            
+            logger.info(f"Admin {request.user.username} sent notification to {user_count} specific users")
+            return Response({
+                'message': f'Notification sent to {user_count} users',
+                'recipients': user_count,
+                'user_ids': list(users.values_list('id', flat=True))
             }, status=status.HTTP_201_CREATED)
             
     except Exception as e:
         logger.error(f"Failed to send custom notification: {str(e)}")
-        return Response({'error': 'Failed to send notification'}, 
+        return Response({'error': f'Failed to send notification: {str(e)}'}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
