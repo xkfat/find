@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'users',
     'missing',
     'reports',
+    'ai_matches',
     'notifications',
     'location_sharing',
     'django_filters',

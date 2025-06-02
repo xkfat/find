@@ -1,6 +1,7 @@
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver, Signal
 from .models import MissingPerson, CaseUpdate
+from .views import auto_face_match_on_creation
 
 case_status_changed = Signal()
 
@@ -21,6 +22,7 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
     }
 
     if created:
+        # Create initial case updates
         CaseUpdate.objects.create(
             case=instance,
             message="Thank you for submitting your case; we've received your information."
@@ -29,6 +31,18 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
             case=instance,
             message=defaults['in_progress']
         )
+        
+        # Trigger AI facial recognition processing
+        if instance.photo:
+            print(f"Triggering AI facial recognition for new case: {instance.full_name}")
+            try:
+                # Run AI processing in the background (you might want to use Celery for this in production)
+                auto_face_match_on_creation(instance)
+            except Exception as e:
+                print(f"Error in AI processing: {e}")
+        else:
+            print(f"No photo provided for {instance.full_name}, skipping AI processing")
+        
         return
     
     old_status = getattr(instance, '_old_submission_status', None)

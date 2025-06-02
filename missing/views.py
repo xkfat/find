@@ -6,6 +6,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status
 from django.conf import settings
+from ai_matches.models import AIMatch
 from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
 from .models import MissingPerson, CaseUpdate
 from .filters import MissingPersonFilter
@@ -14,15 +15,22 @@ import numpy as np
 import os
 import threading
 
-
 def auto_face_match_on_creation(new_person):
-    import face_recognition
-    
-    if not new_person.photo:
-        return []
-    
+    """Automatically check for face matches when a new case is created and store them"""
     try:
+        # Import here to avoid circular imports
+        from ai_matches.models import AIMatch
+        import face_recognition
+        
+        if not new_person.photo:
+            print(f"No photo for {new_person.full_name}, skipping AI matching")
+            return []
+        
         new_image_path = os.path.join(settings.MEDIA_ROOT, str(new_person.photo))
+        
+        if not os.path.exists(new_image_path):
+            print(f"Image file not found: {new_image_path}")
+            return []
         
         existing_persons = MissingPerson.objects.filter(
             photo__isnull=False,
@@ -30,82 +38,136 @@ def auto_face_match_on_creation(new_person):
         ).exclude(id=new_person.id)
         
         if not existing_persons.exists():
+            print(f"No existing cases with same gender ({new_person.gender}) to compare")
             return []
         
-        new_img = cv2.imread(new_image_path)
-        new_img_rgb = cv2.cvtColor(new_img, cv2.COLOR_BGR2RGB)
-        new_encodings = face_recognition.face_encodings(new_img_rgb)
-        
-        if len(new_encodings) == 0:
-            print("No face detected in new person's image")
+        # Load and process new person's image
+        try:
+            new_img = cv2.imread(new_image_path)
+            if new_img is None:
+                print(f"Could not load image: {new_image_path}")
+                return []
+                
+            new_img_rgb = cv2.cvtColor(new_img, cv2.COLOR_BGR2RGB)
+            new_encodings = face_recognition.face_encodings(new_img_rgb)
+            
+            if len(new_encodings) == 0:
+                print(f"No face detected in {new_person.full_name}'s image")
+                return []
+            
+            new_encoding = new_encodings[0]
+            print(f"Face encoding created for {new_person.full_name}")
+            
+        except Exception as e:
+            print(f"Error processing new person's image: {e}")
             return []
         
-        new_encoding = new_encodings[0]
-        matches = []
+        matches_found = []
+        processed_count = 0
         
         for person in existing_persons:
             try:
                 existing_image_path = os.path.join(settings.MEDIA_ROOT, str(person.photo))
-                if os.path.exists(existing_image_path):
+                if not os.path.exists(existing_image_path):
+                    continue
                     
-                    existing_img = cv2.imread(existing_image_path)
-                    existing_img_rgb = cv2.cvtColor(existing_img, cv2.COLOR_BGR2RGB)
-                    existing_encodings = face_recognition.face_encodings(existing_img_rgb)
+                existing_img = cv2.imread(existing_image_path)
+                if existing_img is None:
+                    continue
                     
-                    if len(existing_encodings) > 0:
-                        existing_encoding = existing_encodings[0]
+                existing_img_rgb = cv2.cvtColor(existing_img, cv2.COLOR_BGR2RGB)
+                existing_encodings = face_recognition.face_encodings(existing_img_rgb)
+                
+                if len(existing_encodings) > 0:
+                    existing_encoding = existing_encodings[0]
+                    
+                    distance = face_recognition.face_distance([existing_encoding], new_encoding)[0]
+                    similarity = max(0, (1 - distance) * 100)
+                    
+                    processed_count += 1
+                    
+                    if similarity >= 45:  # Minimum threshold
+                        # Check if match already exists
+                        existing_match = AIMatch.objects.filter(
+                            original_case=new_person,
+                            matched_case=person
+                        ).first()
                         
-                        distance = face_recognition.face_distance([existing_encoding], new_encoding)[0]
-                        similarity = max(0, (1 - distance) * 100)
-                        
-                        if similarity >= 45:
-                            matches.append({
+                        if not existing_match:
+                            # Create AIMatch record
+                            ai_match = AIMatch.objects.create(
+                                original_case=new_person,
+                                matched_case=person,
+                                confidence_score=round(similarity, 1),
+                                face_distance=distance,
+                                algorithm_used='face_recognition',
+                                status='pending'
+                            )
+                            
+                            matches_found.append({
+                                'ai_match_id': ai_match.id,
                                 'person_id': person.id,
                                 'person_name': person.full_name,
                                 'similarity_percentage': round(similarity, 1),
                                 'status': 'pending',
-                                'photo_url': person.photo.url if person.photo else None
+                                'photo_url': person.photo.url if person.photo else None,
+                                'confidence_level': ai_match.confidence_level
                             })
                             
-                            print(f"Match found: {person.full_name} - {similarity:.1f}%")
-            
+                            print(f"AI Match created: {new_person.full_name} → {person.full_name} ({similarity:.1f}%) [ID: {ai_match.id}]")
+                        else:
+                            print(f"AI Match already exists: {new_person.full_name} → {person.full_name}")
+        
             except Exception as e:
-                print(f"Error comparing with {person.full_name}: {e}")
+                print(f"Error comparing {new_person.full_name} with {person.full_name}: {e}")
                 continue
         
-        matches.sort(key=lambda x: x['similarity_percentage'], reverse=True)
-        return matches
+        print(f"AI Processing complete for {new_person.full_name}: {processed_count} comparisons, {len(matches_found)} matches found")
+        matches_found.sort(key=lambda x: x['similarity_percentage'], reverse=True)
+        return matches_found
         
+    except ImportError:
+        print("ai_matches app not available, skipping AI match storage")
+        return []
     except Exception as e:
         print(f"Error in auto face matching: {e}")
         return []
 
-
 def process_face_matching_background(person_id):
+    """Background task to process face matching and send notifications"""
     try:
         person = MissingPerson.objects.get(id=person_id)
+        print(f"🔄 Starting background AI face matching for {person.full_name}...")
+        
         face_matches = auto_face_match_on_creation(person)
         
         if face_matches:
-            from notifications.signals import send_notification
-            from django.contrib.auth import get_user_model
+            try:
+                from notifications.signals import send_notification
+                from django.contrib.auth import get_user_model
+                
+                User = get_user_model()
+                admin_users = User.objects.filter(is_staff=True)
+                
+                message = f"🔍 {len(face_matches)} potential face matches found for {person.full_name}. Please review."
+                
+                send_notification(
+                    users=admin_users,
+                    message=message,
+                    target_instance=person,
+                    notification_type='missing_person',
+                    push_title="Face Match Alert",
+                    push_data={'person_id': str(person.id), 'match_count': len(face_matches)}
+                )
+                print(f"📧 Notification sent to {admin_users.count()} admin users")
+                
+            except Exception as e:
+                print(f"⚠️ Error sending notification: {e}")
             
-            User = get_user_model()
-            admin_users = User.objects.filter(is_staff=True)
-            
-            message = f"🔍 {len(face_matches)} potential face matches found for {person.full_name}. Please review."
-            
-            send_notification(
-                users=admin_users,
-                message=message,
-                target_instance=person,
-                notification_type='missing_person',
-                push_title="Face Match Alert",
-                push_data={'person_id': str(person.id), 'match_count': len(face_matches)}
-            )
-            
-        print(f"✅ Face matching complete: {len(face_matches)} matches for {person.full_name}")
+        print(f"✅ Background face matching complete: {len(face_matches)} matches for {person.full_name}")
         
+    except MissingPerson.DoesNotExist:
+        print(f"❌ Person with ID {person_id} not found")
     except Exception as e:
         print(f"❌ Background face matching error: {e}")
 
@@ -128,24 +190,38 @@ def missing_person_list(request):
         serializer.is_valid(raise_exception=True)
         
         new_person = serializer.save()
+        print(f"✅ New missing person case created: {new_person.full_name} (ID: {new_person.id})")
         
-        # 🚀 START BACKGROUND PROCESSING
-        threading.Thread(
-            target=process_face_matching_background,
-            args=(new_person.id,),
-            daemon=True
-        ).start()
-        
+        # Prepare response data with success message
         response_data = serializer.data
-        response_data['face_matches'] = {
-            'found': False,
-            'count': 0,
-            'matches': [],
-            'message': 'Case submitted successfully!'
-        }
+        response_data['message'] = f"Missing person case for {new_person.full_name} has been successfully created."
+        
+        # Check if photo exists for AI processing
+        if new_person.photo:
+            response_data['ai_processing'] = {
+                'status': 'initiated',
+                'message': 'AI face matching has been started in the background. You will be notified if any matches are found.',
+                'note': 'This process may take a few minutes depending on the number of existing cases.'
+            }
+            
+            # Start AI processing in background thread
+            print(f"🚀 Starting background AI processing for {new_person.full_name}")
+            thread = threading.Thread(
+                target=process_face_matching_background, 
+                args=(new_person.id,),
+                daemon=True
+            )
+            thread.start()
+            
+        else:
+            response_data['ai_processing'] = {
+                'status': 'skipped',
+                'message': 'No photo provided - AI face matching skipped.',
+                'note': 'Upload a photo later to enable face matching capabilities.'
+            }
+            print(f"⏭️ No photo provided for {new_person.full_name}, skipping AI processing")
         
         return Response(response_data, status=status.HTTP_201_CREATED)
-
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticatedOrReadOnly])
@@ -164,7 +240,19 @@ def missing_person_detail(request, pk):
         if request.method == 'PATCH':
             serializer = MissingPersonSerializer(missing, data=request.data, partial=True, context={'request': request})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            old_photo = missing.photo
+            updated_person = serializer.save()
+            
+            # If photo was added or changed, trigger AI matching
+            if updated_person.photo and (not old_photo or str(updated_person.photo) != str(old_photo)):
+                print(f"🔄 Photo updated for {updated_person.full_name}, triggering AI matching")
+                thread = threading.Thread(
+                    target=process_face_matching_background, 
+                    args=(updated_person.id,),
+                    daemon=True
+                )
+                thread.start()
+            
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         elif request.method == 'DELETE':

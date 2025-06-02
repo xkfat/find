@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/location-sharing/', include('location_sharing.urls')),
+    path('api/ai-matches/', include('ai_matches.urls')),  
 
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
