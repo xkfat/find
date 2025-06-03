@@ -1,5 +1,5 @@
 import django_filters
-from .models import MissingPerson, GENDER, CASE_STATUS
+from .models import MissingPerson, GENDER, CASE_STATUS,  SUBMISSION_STATUS
 from django.db import models
 
 class MissingPersonFilter(django_filters.FilterSet):
@@ -9,6 +9,7 @@ class MissingPersonFilter(django_filters.FilterSet):
 
     gender = django_filters.ChoiceFilter(choices=GENDER)
     status = django_filters.ChoiceFilter(choices=CASE_STATUS)
+    submission_status = django_filters.ChoiceFilter(field_name='submission_status')
 
     age_min = django_filters.NumberFilter(field_name='age', lookup_expr='gte')
     age_max = django_filters.NumberFilter(field_name='age', lookup_expr='lte')
@@ -47,6 +48,7 @@ class MissingPersonFilter(django_filters.FilterSet):
         fields = [
           'name',
           'name_or_location',
+          'submission_status',
           'location',
           'gender',
           'status',

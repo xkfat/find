@@ -6,13 +6,14 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status
 from django.conf import settings
+from django.db import models
 from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
 from .models import MissingPerson, CaseUpdate
 from .filters import MissingPersonFilter
 import cv2
 import numpy as np
 import os
-import threading
+
 
 def auto_face_match_on_creation(new_person):
     """Automatically check for face matches when a new case is created and store them"""
@@ -132,6 +133,7 @@ def auto_face_match_on_creation(new_person):
         print(f"Error in auto face matching: {e}")
         return []
 
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticatedOrReadOnly])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -139,6 +141,7 @@ def missing_person_list(request):
     if request.method == 'GET':
         queryset = MissingPerson.objects.select_related('reporter').prefetch_related('updates').order_by('-date_reported')
         filtered_qs = MissingPersonFilter(request.GET, queryset=queryset).qs
+        
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(filtered_qs, request)
 
@@ -173,6 +176,7 @@ def missing_person_list(request):
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
+
 @api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticatedOrReadOnly])
 @parser_classes([MultiPartParser, JSONParser, FormParser])
@@ -205,12 +209,14 @@ def missing_person_detail(request, pk):
             missing.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_submitted_cases(request):
     qs = MissingPerson.objects.filter(reporter=request.user).order_by('-date_reported')
     serializer = SubmittedCaseListSerializer(qs, many=True, context={'request': request})
     return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -227,9 +233,13 @@ def case_updates(request, pk):
     serializer = CaseUpdateSerializer(updates, many=True)
     return Response(serializer.data)
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_case_update(request, case_id):
+    """
+    Enhanced case update endpoint that handles both manual and auto updates
+    """
     if not request.user.is_staff:
         return Response(
             {'error': 'Only staff can add updates to cases'}, 
@@ -237,18 +247,129 @@ def add_case_update(request, case_id):
         )
     
     case = get_object_or_404(MissingPerson, pk=case_id)
+    
+    # Check if case has a reporter
+    if not case.reporter:
+        return Response(
+            {'error': 'Cannot send update - case has no reporter'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     serializer = CaseUpdateCreateSerializer(data=request.data, context={'case_id': case_id})
 
     if serializer.is_valid():
-        serializer.save()
-
+        # Create the case update
+        update = serializer.save()
+        
+        # Update submission status if provided
         if 'submission_status' in request.data:
-            case.submission_status = request.data['submission_status']
+            old_status = case.submission_status
+            new_status = request.data['submission_status']
+            case.submission_status = new_status
             case.save()
+            
+            # Send notification about status change
+            try:
+                from notifications.signals import send_notification
+                
+                status_message = f"Your case status has been updated from '{old_status.replace('_', ' ').title()}' to '{new_status.replace('_', ' ').title()}'."
+                
+                send_notification(
+                    users=[case.reporter],
+                    message=status_message,
+                    target_instance=case,
+                    notification_type='case_update',
+                    push_title="Case Status Update",
+                    push_data={
+                        'case_id': str(case.id),
+                        'person_name': case.full_name,
+                        'old_status': old_status,
+                        'new_status': new_status,
+                        'action': 'view_case'
+                    }
+                )
+            except Exception as e:
+                print(f"Error sending status change notification: {e}")
+        
+        # Send notification about the case update
+        try:
+            from notifications.signals import send_notification
+            
+            update_message = f"New update for {case.full_name}: {update.message}"
+            
+            send_notification(
+                users=[case.reporter],
+                message=update_message,
+                target_instance=update,
+                notification_type='case_update',
+                push_title="Case Update",
+                push_body=f"Update for {case.full_name}",
+                push_data={
+                    'case_id': str(case.id),
+                    'person_name': case.full_name,
+                    'update_id': str(update.id),
+                    'action': 'view_update'
+                }
+            )
+            
+            print(f"✅ Case update notification sent to {case.reporter.username} for case {case.id}")
+            
+        except Exception as e:
+            print(f"❌ Error sending case update notification: {e}")
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # Prepare response data
+        response_data = serializer.data
+        response_data.update({
+            'success': True,
+            'message': f'Case update sent successfully to {case.full_name}\'s reporter ({case.reporter.username})',
+            'case_info': {
+                'id': case.id,
+                'full_name': case.full_name,
+                'reporter': case.reporter.username,
+                'status': case.status,
+                'submission_status': case.submission_status
+            }
+        })
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_cases_for_updates(request):
+    """
+    Get cases that have reporters and can receive updates
+    """
+    if not request.user.is_staff:
+        return Response(
+            {'error': 'Only staff can access this endpoint'}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Filter cases that have reporters
+    queryset = MissingPerson.objects.filter(
+        reporter__isnull=False
+    ).select_related('reporter').order_by('-date_reported')
+    
+    # Apply search filter if provided
+    search = request.GET.get('search', '')
+    if search:
+        queryset = queryset.filter(
+            models.Q(first_name__icontains=search) |
+            models.Q(last_name__icontains=search) |
+            models.Q(reporter__username__icontains=search) |
+            models.Q(last_seen_location__icontains=search)
+        )
+    
+    # Apply pagination
+    paginator = PageNumberPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    
+    serializer = MissingPersonSerializer(page, many=True, context={'request': request})
+    return paginator.get_paginated_response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
