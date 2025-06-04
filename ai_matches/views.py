@@ -57,15 +57,14 @@ def ai_match_detail(request, match_id):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def review_ai_match(request, match_id):
-    """Confirm, reject, or set AI match under review"""
+    """Confirm, reject, or change status of AI match - allows all status transitions"""
     match = get_object_or_404(AIMatch, id=match_id)
     
-    # Allow status changes from pending or under_review
-    if match.status not in ['pending', 'under_review']:
-        return Response(
-            {'error': 'This match has already been finalized'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # REMOVED: Allow any status to change to any other status for full flexibility
+    # Old restrictive code was:
+    # if match.status not in ['pending', 'under_review']:
+    #     return Response({'error': 'This match has already been finalized'}, 
+    #                    status=status.HTTP_400_BAD_REQUEST)
     
     serializer = AIMatchActionSerializer(data=request.data)
     if not serializer.is_valid():
@@ -74,6 +73,9 @@ def review_ai_match(request, match_id):
     action = serializer.validated_data['action']
     admin_notes = serializer.validated_data.get('admin_notes', '')
     
+    # Store old status for logging and response
+    old_status = match.status
+    
     if action == 'confirm':
         match.confirm_match(request.user, admin_notes)
         message = f"Match confirmed. Case #{match.original_case.id} marked as found."
@@ -81,24 +83,41 @@ def review_ai_match(request, match_id):
         match.reject_match(request.user, admin_notes)
         message = f"Match rejected and marked as false positive."
     elif action == 'under_review':
-        # Set match to under review
         match.status = 'under_review'
         match.reviewed_by = request.user
         match.review_date = timezone.now()
         match.admin_notes = admin_notes
         match.save()
         message = f"Match set to under review for further investigation."
+    elif action == 'pending':
+        # NEW: Allow resetting to pending status
+        match.status = 'pending'
+        match.reviewed_by = request.user
+        match.review_date = timezone.now()
+        match.admin_notes = admin_notes
+        # Note: Don't change original case status when resetting to pending
+        match.save()
+        message = f"Match reset to pending review status."
     else:
         return Response(
-            {'error': 'Invalid action. Must be confirm, reject, or under_review'}, 
+            {'error': 'Invalid action. Must be confirm, reject, under_review, or pending'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    # Log the status change for audit purposes
+    print(f"AI Match {match.id} status changed: {old_status} → {match.status} by {request.user.username}")
     
     # Return updated match data
     updated_serializer = AIMatchSerializer(match, context={'request': request})
     return Response({
         'message': message,
-        'match': updated_serializer.data
+        'match': updated_serializer.data,
+        'status_change': {
+            'from': old_status,
+            'to': match.status,
+            'changed_by': request.user.username,
+            'timestamp': timezone.now().isoformat()
+        }
     })
 
 @api_view(['GET'])
@@ -132,3 +151,19 @@ def ai_match_stats(request):
         'high_confidence_pending': high_confidence_pending,
         'false_positives': rejected_matches,  # For compatibility with frontend
     })
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def delete_ai_match(request, match_id):
+    """Delete an AI match permanently"""
+    match = get_object_or_404(AIMatch, id=match_id)
+    
+    # Optional: Log the deletion for audit purposes
+    print(f"Admin {request.user.username} deleted AI match {match.id}: "
+          f"{match.original_case.full_name} → {match.matched_case.full_name}")
+    
+    match.delete()
+    return Response(
+        {'message': 'AI match deleted successfully'}, 
+        status=status.HTTP_204_NO_CONTENT
+    )

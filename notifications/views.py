@@ -1,3 +1,5 @@
+# notifications/views.py - Updated with additional endpoints
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -14,7 +16,10 @@ logger = logging.getLogger(__name__)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_notifications(request):
-   
+    """
+    Get notifications for the authenticated user
+    Automatically marks unread notifications as read when fetched
+    """
     unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
     if unread_count > 0:
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
@@ -37,12 +42,30 @@ def list_notifications(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def unread_count(request):
+    """Get count of unread notifications for the user"""
     count = Notification.objects.filter(user=request.user, is_read=False).count()
     return Response({'unread_count': count})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_all_as_read(request):
+    """Mark all notifications as read for the user"""
+    updated_count = Notification.objects.filter(
+        user=request.user, 
+        is_read=False
+    ).update(is_read=True)
+    
+    logger.info(f"Marked {updated_count} notifications as read for {request.user.username}")
+    
+    return Response({
+        'message': f'Marked {updated_count} notifications as read',
+        'updated_count': updated_count
+    })
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def view_notification(request, id):
+    """Get a specific notification and mark it as read"""
     notification = get_object_or_404(Notification, id=id, user=request.user)
     
     if not notification.is_read:
@@ -56,6 +79,7 @@ def view_notification(request, id):
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def all_notifications(request):
+    """Get all notifications (admin only)"""
     qs = Notification.objects.all().order_by('-date_created')
     
     user_id = request.query_params.get('user_id')
@@ -72,6 +96,7 @@ def all_notifications(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_notification(request, id):
+    """Delete a specific notification"""
     try:
         notification = get_object_or_404(Notification, id=id, user=request.user)
         notification.delete()
@@ -86,6 +111,7 @@ def delete_notification(request, id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def clear_all_notifications(request):
+    """Clear all notifications for the user"""
     try:
         count = Notification.objects.filter(user=request.user).count()
         Notification.objects.filter(user=request.user).delete()
@@ -100,6 +126,7 @@ def clear_all_notifications(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def send_custom_notification(request):
+    """Send custom notification (admin only)"""
     message = request.data.get('message')
     receiver = request.data.get('receiver')
     notification_type = request.data.get('notification_type', 'system')
@@ -133,7 +160,6 @@ def send_custom_notification(request):
             }, status=status.HTTP_201_CREATED)
         
         elif receiver == 'staff':
-            # Handle staff only option
             users = BasicUser.objects.filter(is_staff=True)
             user_count = users.count()
             
@@ -188,3 +214,142 @@ def send_custom_notification(request):
         logger.error(f"Failed to send custom notification: {str(e)}")
         return Response({'error': f'Failed to send notification: {str(e)}'}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def notification_stats(request):
+    """Get notification statistics (admin only)"""
+    from django.db.models import Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    try:
+        # Total notifications
+        total_notifications = Notification.objects.count()
+        
+        # Unread notifications
+        unread_notifications = Notification.objects.filter(is_read=False).count()
+        
+        # Notifications by type
+        type_stats = Notification.objects.values('notification_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Recent notifications (last 24 hours)
+        yesterday = timezone.now() - timedelta(days=1)
+        recent_notifications = Notification.objects.filter(
+            date_created__gte=yesterday
+        ).count()
+        
+        # Top active users (most notifications)
+        top_users = Notification.objects.values(
+            'user__username'
+        ).annotate(
+            count=Count('id')
+        ).order_by('-count')[:5]
+        
+        return Response({
+            'total_notifications': total_notifications,
+            'unread_notifications': unread_notifications,
+            'recent_notifications_24h': recent_notifications,
+            'notifications_by_type': type_stats,
+            'top_users': top_users,
+            'timestamp': timezone.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch notification stats: {str(e)}")
+        return Response({
+            'error': f'Failed to fetch notification stats: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+# Add this view to your notifications/views.py
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def admin_notifications_only(request):
+    """
+    Get notifications specifically sent TO admin users
+    This returns only notifications where the recipient is an admin
+    """
+    # Get notifications for admin users only
+    qs = Notification.objects.filter(
+        user__is_staff=True  # Only notifications sent to admin users
+    ).select_related('user').order_by('-date_created')
+    
+    # Apply filters
+    notification_type = request.query_params.get('type')
+    is_read = request.query_params.get('is_read')
+    user_id = request.query_params.get('user_id')
+    
+    if notification_type:
+        qs = qs.filter(notification_type=notification_type)
+    
+    if is_read is not None:
+        is_read_bool = is_read.lower() in ['true', '1', 'yes']
+        qs = qs.filter(is_read=is_read_bool)
+    
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    
+    serializer = NotificationSerializer(qs, many=True)
+    
+    return Response({
+        'notifications': serializer.data,
+        'count': qs.count(),
+        'admin_only': True
+    })
+
+@api_view(['GET']) 
+@permission_classes([IsAdminUser])
+def current_admin_notifications(request):
+    """
+    Get notifications for the currently logged-in admin user
+    This is what you probably want for the admin dashboard
+    """
+    if not request.user.is_staff:
+        return Response(
+            {'error': 'Only admin users can access this endpoint'}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Get notifications for the current admin user
+    qs = Notification.objects.filter(user=request.user).order_by('-date_created')
+    
+    # Apply filters
+    notification_type = request.query_params.get('type')
+    if notification_type:
+        qs = qs.filter(notification_type=notification_type)
+    
+    serializer = NotificationSerializer(qs, many=True)
+    
+    # Count unread notifications
+    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+    
+    return Response({
+        'notifications': serializer.data,
+        'unread_count': unread_count,
+        'total_count': qs.count(),
+        'user': request.user.username
+    })
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def mark_notification_as_read(request, id):
+    """Mark a specific notification as read via PATCH"""
+    try:
+        notification = get_object_or_404(Notification, id=id, user=request.user)
+        
+        is_read = request.data.get('is_read', True)
+        notification.is_read = is_read
+        notification.save()
+        
+        logger.info(f"Notification {id} marked as {'read' if is_read else 'unread'} for {request.user.username}")
+        
+        serializer = NotificationSerializer(notification)
+        return Response(serializer.data)
+        
+    except Exception as e:
+        logger.error(f"Failed to update notification {id}: {str(e)}")
+        return Response({'error': 'Failed to update notification'}, 
+                       status=status.HTTP_400_BAD_REQUEST)

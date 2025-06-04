@@ -32,5 +32,5 @@ class AIMatchSerializer(serializers.ModelSerializer):
 
 class AIMatchActionSerializer(serializers.Serializer):
     # Updated to include 'under_review' as a valid choice
-    action = serializers.ChoiceField(choices=['confirm', 'reject', 'under_review'])
+    action = serializers.ChoiceField(choices=['confirm', 'reject', 'under_review', 'pending'])
     admin_notes = serializers.CharField(required=False, allow_blank=True)
