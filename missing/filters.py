@@ -9,7 +9,7 @@ class MissingPersonFilter(django_filters.FilterSet):
 
     gender = django_filters.ChoiceFilter(choices=GENDER)
     status = django_filters.ChoiceFilter(choices=CASE_STATUS)
-    submission_status = django_filters.ChoiceFilter(field_name='submission_status')
+    submission_status = django_filters.ChoiceFilter(field_name='submission_status', choices=SUBMISSION_STATUS)
 
     age_min = django_filters.NumberFilter(field_name='age', lookup_expr='gte')
     age_max = django_filters.NumberFilter(field_name='age', lookup_expr='lte')

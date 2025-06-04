@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status
+from django.db.models import Count, Q
 from django.conf import settings
 from django.db import models
 from .serializers import MissingPersonSerializer, CaseUpdateSerializer, SubmittedCaseListSerializer, CaseUpdateCreateSerializer
@@ -384,3 +385,72 @@ def case_detail_with_updates(request, case_id):
     
     serializer = MissingPersonSerializer(case, context={'request': request})
     return Response(serializer.data)
+
+
+# Add this to missing/views.py
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def cases_stats(request):
+    """Get comprehensive statistics for missing person cases"""
+    try:
+        # Apply the same filters as the main cases endpoint
+        queryset = MissingPerson.objects.all()
+        filtered_qs = MissingPersonFilter(request.GET, queryset=queryset).qs
+        
+        # Calculate stats using database aggregation (much more efficient)
+        total_cases = filtered_qs.count()
+        
+        # Submission status stats
+        submission_stats = filtered_qs.aggregate(
+            active=Count('id', filter=Q(submission_status='active')),
+            in_progress=Count('id', filter=Q(submission_status='in_progress')),
+            closed=Count('id', filter=Q(submission_status='closed')),
+            rejected=Count('id', filter=Q(submission_status='rejected'))
+        )
+        
+        # Case status stats  
+        case_stats = filtered_qs.aggregate(
+            missing=Count('id', filter=Q(status='missing')),
+            found=Count('id', filter=Q(status='found')),
+            investigating=Count('id', filter=Q(status='under_investigation'))
+        )
+        
+        # Gender breakdown
+        gender_stats = filtered_qs.aggregate(
+            male=Count('id', filter=Q(gender='Male')),
+            female=Count('id', filter=Q(gender='Female'))
+        )
+        
+        # Recent cases (last 30 days)
+        from datetime import datetime, timedelta
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_cases = filtered_qs.filter(date_reported__gte=thirty_days_ago).count()
+        
+        return Response({
+            'total_cases': total_cases,
+            'submission_status': {
+                'active': submission_stats['active'] or 0,
+                'in_progress': submission_stats['in_progress'] or 0,
+                'closed': submission_stats['closed'] or 0,
+                'rejected': submission_stats['rejected'] or 0
+            },
+            'case_status': {
+                'missing': case_stats['missing'] or 0,
+                'found': case_stats['found'] or 0,
+                'investigating': case_stats['investigating'] or 0
+            },
+            'gender': {
+                'male': gender_stats['male'] or 0,
+                'female': gender_stats['female'] or 0
+            },
+            'recent_cases_30_days': recent_cases,
+            'filters_applied': dict(request.GET),
+            'timestamp': timezone.now().isoformat()
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to fetch stats: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
