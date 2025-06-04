@@ -87,7 +87,7 @@ def auto_face_match_on_creation(new_person):
                     
                     processed_count += 1
                     
-                    if similarity >= 45:  # Minimum threshold
+                    if similarity >= 40:  # Minimum threshold
                         # Check if match already exists
                         existing_match = AIMatch.objects.filter(
                             original_case=new_person,

@@ -31,5 +31,6 @@ class AIMatchSerializer(serializers.ModelSerializer):
         return obj.review_date.strftime('%Y-%m-%d') if obj.review_date else None
 
 class AIMatchActionSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(choices=['confirm', 'reject'])
+    # Updated to include 'under_review' as a valid choice
+    action = serializers.ChoiceField(choices=['confirm', 'reject', 'under_review'])
     admin_notes = serializers.CharField(required=False, allow_blank=True)

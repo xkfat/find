@@ -66,7 +66,7 @@ class AIMatch(models.Model):
             return 'unknown'
         if self.confidence_score >= 90:
             return 'high'
-        elif self.confidence_score >= 70:
+        elif self.confidence_score >= 46:
             return 'medium'
         else:
             return 'low'
