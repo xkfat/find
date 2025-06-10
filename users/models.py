@@ -4,9 +4,9 @@ from django.contrib.auth.models import AbstractUser
 class BasicUser(AbstractUser):
  ROLE_USER = 'user'
  ROLE_ADMIN = 'admin'
- LANGUAGE_ENGLISH = 'en'
- LANGUAGE_FRENCH = 'fr'
- LANGUAGE_ARABIC = 'ar'
+ LANGUAGE_ENGLISH = 'english'
+ LANGUAGE_FRENCH = 'french'
+ LANGUAGE_ARABIC = 'arabic'
  THEME_LIGHT = 'light'
  THEME_DARK = 'dark'
 
