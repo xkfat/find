@@ -93,44 +93,38 @@ def register_user(request):
 @permission_classes([AllowAny])
 def login_user(request):
     print(request.data)
-    
-    # Check for empty username/password first
-    username = request.data.get('username', '').strip()
-    password = request.data.get('password', '').strip()
-    
-    if not username or not password:
-        return Response({'msg': 'Please enter your username and password.',"code":"400"}, status=status.HTTP_200_OK)
-    
     serializer = LoginSerializer(data=request.data)
+    
+    # Return 400 for validation errors (empty fields, etc.)
     if not serializer.is_valid():
-       return Response({'msg': 'Please enter your username and password.',"code":"400"}, status=status.HTTP_200_OK)
+        return Response({
+            'msg': 'Wrong password or username, please try again.',
+            'code': '400'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     username = serializer.validated_data['username']
     password = serializer.validated_data['password']
-    
-    # Check if user exists first
-    try:
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        user_exists = User.objects.filter(username=username).exists()
-        
-        if not user_exists:
-            return Response({'msg': 'Wrong username or password. Please try again.',"code":"404"}, status=status.HTTP_200_OK)
-    except:
-        pass
-    
     user = authenticate(username=username, password=password)
     
+    # Success case
     if user is not None:
         refresh = RefreshToken.for_user(user)
         return Response({
-            'refresh' : str(refresh), 
-            'access' : str(refresh.access_token),
+            'refresh': str(refresh), 
+            'access': str(refresh.access_token),
             'user': ProfileSerializer(user).data,
-            "code":"200"
+            'code': '200'
         }, status=status.HTTP_200_OK)
+    
+    # Authentication failed - return 401
     else:
-        return Response({'msg': 'Wrong username or password. Please try again.',"code":"401"}, status=status.HTTP_200_OK)
+        return Response({
+            'msg': 'Wrong password or username, please try again.',
+            'code': '401'
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
 
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
