@@ -80,15 +80,15 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
     defaults = {
         'active':      "We start investigating your case.",
         'in_progress': "We're looking and verifying your case.",
-        'closed':      "Your case has been closed. Thank you for using our service.",
-        'rejected':    "Your case submission has been rejected.",
+        'closed':      "We're glad your loved one has been found. Thank you for trusting us.",
+        'rejected':    "We couldn’t accept your case. Please make sure it’s real before submitting.",
     }
 
     if created:
         # Create initial case updates
         CaseUpdate.objects.create(
             case=instance,
-            message="Thank you for submitting your case; we've received your information."
+            message="Thank you for submitting your case, We're here to help and will review your case shortly."
         )
         CaseUpdate.objects.create(
             case=instance,

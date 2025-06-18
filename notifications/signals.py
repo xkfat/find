@@ -113,7 +113,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         message=regular_msg,
         target_instance=instance,
         notification_type='missing_person',
-        push_title="New Missing Person",  
+        push_title="New Missing Person Case",  
         push_data={
             'person_name': f"{instance.first_name} {instance.last_name}",
             'case_id': str(instance.pk),
@@ -122,7 +122,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     )
 
     admin_msg = (
-        f"📢 Admin alert: MissingPerson \"{instance.first_name} {instance.last_name}\" "
+        f"New MissingPerson case : \"{instance.first_name} {instance.last_name}\" "
         f"(ID {instance.pk}) submitted by {instance.reporter.username if instance.reporter else 'Unknown'}."
     )
     
@@ -131,7 +131,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         message=admin_msg,
         target_instance=instance,
         notification_type='missing_person',
-        push_title="Admin Alert - New Case",
+        push_title="New Case",
         push_data={
             'person_name': f"{instance.first_name} {instance.last_name}",
             'case_id': str(instance.pk),
@@ -195,7 +195,7 @@ def notify_new_report(sender, instance, **kwargs):
         return
 
     report_msg = (
-        f"📝 New report (ID {instance.pk}) on "
+        f"New report sighting (ID {instance.pk}) on "
         f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
         f"submitted by {reporter_name}." 
     )
