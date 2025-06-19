@@ -87,23 +87,38 @@ def auto_face_match_on_creation(new_person):
                     
                     processed_count += 1
                     
-                    if similarity >= 40:  # Minimum threshold for potential match
-                        ai_match = AIMatch.objects.create(
+                    if similarity >= 40:  # Minimum threshold
+                        # Check if match already exists
+                        existing_match = AIMatch.objects.filter(
                             original_case=new_person,
-                            matched_case=person,
-                            similarity_percentage=similarity,
-                            status='pending'
-                        )
+                            matched_case=person
+                        ).first()
                         
-                        matches_found.append({
-                            'matched_case_id': person.id,
-                            'matched_name': person.full_name,
-                            'similarity_percentage': similarity,
-                            'ai_match_id': ai_match.id
-                        })
-                        
-                        print(f"✅ {similarity:.1f}% match: {new_person.full_name} vs {person.full_name} (AI Match ID: {ai_match.id})")
-                        
+                        if not existing_match:
+                            # Create AIMatch record
+                            ai_match = AIMatch.objects.create(
+                                original_case=new_person,
+                                matched_case=person,
+                                confidence_score=round(similarity, 1),
+                                face_distance=distance,
+                                algorithm_used='face_recognition',
+                                status='pending'
+                            )
+                            
+                            matches_found.append({
+                                'ai_match_id': ai_match.id,
+                                'person_id': person.id,
+                                'person_name': person.full_name,
+                                'similarity_percentage': round(similarity, 1),
+                                'status': 'pending',
+                                'photo_url': person.photo.url if person.photo else None,
+                                'confidence_level': ai_match.confidence_level
+                            })
+                            
+                            print(f"AI Match created: {new_person.full_name} → {person.full_name} ({similarity:.1f}%) [ID: {ai_match.id}]")
+                        else:
+                            print(f"AI Match already exists: {new_person.full_name} → {person.full_name}")
+        
             except Exception as e:
                 print(f"Error comparing {new_person.full_name} with {person.full_name}: {e}")
                 continue
@@ -118,6 +133,7 @@ def auto_face_match_on_creation(new_person):
     except Exception as e:
         print(f"Error in auto face matching: {e}")
         return []
+
 
 
 @api_view(['GET', 'POST'])
