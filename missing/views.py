@@ -259,7 +259,7 @@ def add_case_update(request, case_id):
     serializer = CaseUpdateCreateSerializer(data=request.data, context={'case_id': case_id})
 
     if serializer.is_valid():
-        # Create the case update
+        # Create the case update - this will trigger the post_save signal automatically
         update = serializer.save()
         
         # Update submission status if provided
@@ -269,7 +269,7 @@ def add_case_update(request, case_id):
             case.submission_status = new_status
             case.save()
             
-            # Send notification about status change
+            # Send notification about status change (separate from case update)
             try:
                 from notifications.signals import send_notification
                 
@@ -281,6 +281,7 @@ def add_case_update(request, case_id):
                     target_instance=case,
                     notification_type='case_update',
                     push_title="Case Status Update",
+                    push_body=f"Status changed to {new_status.replace('_', ' ').title()}",
                     push_data={
                         'case_id': str(case.id),
                         'person_name': case.full_name,
@@ -292,32 +293,9 @@ def add_case_update(request, case_id):
             except Exception as e:
                 print(f"Error sending status change notification: {e}")
         
-        # Send notification about the case update
-        try:
-            from notifications.signals import send_notification
-            
-            update_message = f"New update for {case.full_name}: {update.message}"
-            
-            send_notification(
-                users=[case.reporter],
-                message=update_message,
-                target_instance=update,
-                notification_type='case_update',
-                push_title="Case Update",
-                push_body=f"Update for {case.full_name}",
-                push_data={
-                    'case_id': str(case.id),
-                    'person_name': case.full_name,
-                    'update_id': str(update.id),
-                    'action': 'view_update'
-                }
-            )
-            
-            print(f"✅ Case update notification sent to {case.reporter.username} for case {case.id}")
-            
-        except Exception as e:
-            print(f"❌ Error sending case update notification: {e}")
-
+        # DON'T SEND CASE UPDATE NOTIFICATION HERE - it's handled by the signal!
+        print(f"✅ Case update created for case {case.id} - notification sent by signal")
+        
         # Prepare response data
         response_data = serializer.data
         response_data.update({
@@ -335,7 +313,6 @@ def add_case_update(request, case_id):
         return Response(response_data, status=status.HTTP_201_CREATED)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

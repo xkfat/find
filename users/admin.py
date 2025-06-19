@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from .models import BasicUser
 
 admin.site.site_header = 'Admin Dashboard'
@@ -15,12 +15,22 @@ class BasicUserCreationForm(UserCreationForm):
             'location_permission',
         )
 
+class BasicUserChangeForm(UserChangeForm):
+    class Meta(UserChangeForm.Meta):
+        model = BasicUser
+        fields = (
+            'username', 'email', 'first_name', 'last_name',
+            'phone_number', 'profile_photo', 'language', 'theme',
+            'location_permission', 'is_active', 'role',
+        )
+
 @admin.register(BasicUser)
 class AccountAdmin(UserAdmin):
     model = BasicUser
     add_form = BasicUserCreationForm
+    form = BasicUserChangeForm
 
-    list_display       = (
+    list_display = (
         'id',
         'username',
         'full_name',
@@ -30,10 +40,10 @@ class AccountAdmin(UserAdmin):
         'is_active',
     )
     list_display_links = ('id', 'full_name')
-    list_editable      = ('role',)
-    list_filter        = ('role', 'is_active')
-    search_fields      = ('username', 'email', 'phone_number')
-    ordering           = ('username', 'first_name')
+    list_editable = ('role',)
+    list_filter = ('role', 'is_active')
+    search_fields = ('username', 'email', 'phone_number')
+    ordering = ('username', 'first_name')
 
     add_fieldsets = (
         (None, {
@@ -46,22 +56,34 @@ class AccountAdmin(UserAdmin):
         }),
     )
 
-    def get_fieldsets(self, request, obj=None):
-        if obj is not None:
-            return [
-                ('Permissions', {
-                    'fields': ('is_active', 'role'),
-                }),
-            ]
-        return self.add_fieldsets
+    fieldsets = (
+        ('Personal Information', {
+            'fields': (
+                'username', 'email', 'first_name', 'last_name',
+                'phone_number', 'profile_photo',
+            ),
+        }),
+        ('App Preferences', {
+            'fields': (
+                'language', 'theme', 'location_permission',
+            ),
+        }),
+        ('Permissions & Status', {
+            'fields': (
+                'is_active', 'role',
+            ),
+        }),
+        ('Important Dates', {
+            'fields': (
+                'last_login', 'date_joined',
+            ),
+        }),
+    )
 
     def get_readonly_fields(self, request, obj=None):
         if obj is not None:
-            return (
-                'username', 'email', 'first_name', 'last_name',
-                'phone_number', 'profile_photo', 'language', 'theme',
-                'location_permission', 'last_login', 'date_joined'
-            )
+            # Only make timestamps readonly for existing users
+            return ('last_login', 'date_joined')
         return ()
 
     def full_name(self, obj):

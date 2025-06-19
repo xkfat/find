@@ -1,10 +1,12 @@
+# 1. FIRST: Update your notifications/signals.py file completely
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import Notification
 from .firebase import send_push_notification
-from missing.models import MissingPerson
+from missing.models import MissingPerson, CaseUpdate  # IMPORTANT: Import CaseUpdate
 from missing.signals import case_status_changed
 from location_sharing.signals import location_alert, location_request_sent, location_request_responded
 from reports.signals import report_created, report_status_changed
@@ -44,10 +46,23 @@ def send_notification(users, message, target_instance=None, notification_type='s
                 notification_type=notification_type
             )
             notification_count += 1
-            logger.debug(f"Database notification created for {user.username} (ID: {notification.id})")
+            logger.info(f"Database notification created for {user.username} (ID: {notification.id})")
             
             if user.fcm:
-                title = push_title or "FindThem"
+                # FIX: Proper title setting based on notification type
+                if notification_type == 'case_update':
+                    title = push_title or "Case Update"
+                elif notification_type == 'missing_person':
+                    title = push_title or "New Missing Person"
+                elif notification_type == 'location_request':
+                    title = push_title or "Location Sharing Request"
+                elif notification_type == 'location_alert':
+                    title = push_title or "Location Alert"
+                elif notification_type == 'report':
+                    title = push_title or "New Report Received"
+                else:
+                    title = push_title or "FindThem Notification"
+                
                 body = push_body or message
                 data = push_data or {}
                 data.update({
@@ -56,6 +71,8 @@ def send_notification(users, message, target_instance=None, notification_type='s
                     'target_id': str(oid) if oid else '',
                     'target_model': ct.model if ct else ''
                 })
+                
+                logger.info(f"Sending push notification to {user.username} with title: '{title}'")
                 
                 result = send_push_notification(
                     title=title,
@@ -66,14 +83,14 @@ def send_notification(users, message, target_instance=None, notification_type='s
                 
                 if result.get('success'):
                     push_success_count += 1
-                    logger.debug(f"Push notification sent to {user.username}")
+                    logger.info(f"✅ Push notification sent successfully to {user.username}")
                 elif result.get('should_remove_token'):
                     invalid_tokens.append(user)
                     logger.warning(f"Invalid FCM token for user {user.username}")
                 else:
-                    logger.error(f"Failed to send push to {user.username}: {result.get('error')}")
+                    logger.error(f"❌ Failed to send push to {user.username}: {result.get('error')}")
             else:
-                logger.debug(f"No FCM token for user {user.username} - skipping push notification")
+                logger.warning(f"No FCM token for user {user.username} - skipping push notification")
             
         except Exception as e:
             logger.error(f"Error creating notification for {user.username}: {str(e)}")
@@ -85,6 +102,62 @@ def send_notification(users, message, target_instance=None, notification_type='s
     logger.info(f"Notification complete: {notification_count} DB notifications, {push_success_count} push notifications sent")
 
 
+# CRITICAL: Add this CaseUpdate signal handler
+@receiver(post_save, sender=CaseUpdate)
+def notify_case_update_created(sender, instance, created, **kwargs):
+    """
+    Signal handler for when a case update is created.
+    This ensures all case updates trigger proper notifications with push notifications.
+    """
+    if not created:
+        return
+    
+    logger.info(f"🔔 CaseUpdate signal triggered for {instance.case.full_name}: {instance.message[:50]}...")
+    
+    # Check if case has a reporter
+    if not instance.case.reporter:
+        logger.warning(f"Case {instance.case.id} has no reporter - skipping notification")
+        return
+    
+    # Check for duplicate notifications (prevent double notifications)
+    ct = ContentType.objects.get_for_model(instance)
+    existing_notification = Notification.objects.filter(
+        user=instance.case.reporter,
+        content_type=ct,
+        object_id=instance.pk,
+        notification_type='case_update'
+    ).first()
+    
+    if existing_notification:
+        logger.info(f"Notification already exists for case update {instance.pk}, skipping duplicate")
+        return
+    
+    # Create notification message
+    update_message = f"New update for {instance.case.full_name}: {instance.message}"
+    
+    logger.info(f"Sending case update notification to {instance.case.reporter.username}")
+    
+    # Send notification with proper push notification support
+    send_notification(
+        users=[instance.case.reporter],
+        message=update_message,
+        target_instance=instance,
+        notification_type='case_update',
+        push_title="Case Update",
+        push_body=f"Update for {instance.case.full_name}",
+        push_data={
+            'case_id': str(instance.case.id),
+            'person_name': instance.case.full_name,
+            'update_id': str(instance.pk),
+            'update_message': instance.message[:100],
+            'action': 'view_update'
+        }
+    )
+    
+    logger.info(f"✅ Case update notification process completed for case {instance.case.id}")
+
+
+# Keep all your existing signal handlers below...
 @receiver(post_save, sender=MissingPerson)
 def notify_new_missing_person(sender, instance, created, **kwargs):
     if not created:
@@ -104,7 +177,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         return
     
     regular_msg = (
-        f" New missing person: \"{instance.first_name} {instance.last_name}\". "
+        f"New missing person: \"{instance.first_name} {instance.last_name}\". "
         "Click to view details and help if you can."
     )
     
@@ -113,7 +186,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         message=regular_msg,
         target_instance=instance,
         notification_type='missing_person',
-        push_title="New Missing Person Case",  
+        push_title="New Missing Person",  
         push_data={
             'person_name': f"{instance.first_name} {instance.last_name}",
             'case_id': str(instance.pk),
@@ -122,7 +195,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     )
 
     admin_msg = (
-        f"New MissingPerson case : \"{instance.first_name} {instance.last_name}\" "
+        f"📢 Admin alert: MissingPerson \"{instance.first_name} {instance.last_name}\" "
         f"(ID {instance.pk}) submitted by {instance.reporter.username if instance.reporter else 'Unknown'}."
     )
     
@@ -131,7 +204,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
         message=admin_msg,
         target_instance=instance,
         notification_type='missing_person',
-        push_title="New Case",
+        push_title="Admin Alert - New Case",
         push_data={
             'person_name': f"{instance.first_name} {instance.last_name}",
             'case_id': str(instance.pk),
@@ -139,6 +212,7 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
             'action': 'admin_review'
         }
     )
+
 
 @receiver(case_status_changed)
 def notify_case_status_change(sender, instance, old_status, new_status, update, **kwargs):
@@ -157,7 +231,7 @@ def notify_case_status_change(sender, instance, old_status, new_status, update, 
             logger.info(f"Notification already exists for update {update.pk}, skipping duplicate")
             return
         
-        push_body = f"Case update: {new_status.replace('_', ' ').title()}"
+        push_body = f"Case status updated: {new_status.replace('_', ' ').title()}"
         
         send_notification(
             users=instance.reporter,
@@ -176,7 +250,7 @@ def notify_case_status_change(sender, instance, old_status, new_status, update, 
         )
 
 
-
+# Continue with all your other signal handlers...
 @receiver(report_created)
 def notify_new_report(sender, instance, **kwargs):
     reporter_name = instance.user.username if instance.user else "Anonymous"
@@ -195,9 +269,9 @@ def notify_new_report(sender, instance, **kwargs):
         return
 
     report_msg = (
-        f"New report sighting (ID {instance.pk}) on "
+        f"📝 New report (ID {instance.pk}) on "
         f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
-        f"submitted by {reporter_name}." 
+        f"submitted by {reporter_name}."
     )
     report_push_body = f"New report on {instance.missing_person.first_name} {instance.missing_person.last_name}"
     
@@ -244,8 +318,6 @@ def notify_new_report(sender, instance, **kwargs):
                     'action': 'view_case'
                 }
             )
-
-
 
 
 @receiver(location_request_sent)
@@ -325,8 +397,6 @@ def notify_location_request_responded(sender, instance, new_status, **kwargs):
 def notify_location_alert(sender, instance, recipient, **kwargs):
     logger.info(f"Location alert sent from {instance.username} to {recipient.username}")
     
- 
-    
     five_minutes_ago = timezone.now() - timedelta(minutes=5)
     ct = ContentType.objects.get_for_model(instance)
     
@@ -360,3 +430,4 @@ def notify_location_alert(sender, instance, recipient, **kwargs):
             'action': 'view_location'
         }
     )
+    
