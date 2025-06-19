@@ -396,20 +396,28 @@ def update_fcm_token(request):
     return Response({'error': 'FCM token required'}, status=400)
 
 
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_fcm_token(request):
-    try:
-        fcm_token = request.data.get('fcm_token')
-        if fcm_token:
-            # Update user's FCM token
-            request.user.fcm = fcm_token
-            request.user.save()
-            return Response({'success': True})
-        return Response({'error': 'No FCM token provided'}, status=400)
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
+    """
+    Update FCM token for current user
+    """
+    fcm_token = request.data.get('fcm_token')
+    
+    if not fcm_token:
+        return Response(
+            {'error': 'FCM token is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    request.user.fcm = fcm_token
+    request.user.save()
+    
+    return Response({
+        'message': 'FCM token updated successfully',
+        'user': request.user.username
+    })
+
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])

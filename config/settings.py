@@ -138,7 +138,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # configure push notification FCM
-cred = credentials.Certificate(os.path.join(BASE_DIR, 'findthem-90a3d-firebase-adminsdk-fbsvc-caeda13757.json'))
+cred = credentials.Certificate('C:/Users/HP/Downloads/findthem-firebase.json')
 firebase_admin.initialize_app(cred)
 
 

@@ -87,38 +87,23 @@ def auto_face_match_on_creation(new_person):
                     
                     processed_count += 1
                     
-                    if similarity >= 40:  # Minimum threshold
-                        # Check if match already exists
-                        existing_match = AIMatch.objects.filter(
+                    if similarity >= 40:  # Minimum threshold for potential match
+                        ai_match = AIMatch.objects.create(
                             original_case=new_person,
-                            matched_case=person
-                        ).first()
+                            matched_case=person,
+                            similarity_percentage=similarity,
+                            status='pending'
+                        )
                         
-                        if not existing_match:
-                            # Create AIMatch record
-                            ai_match = AIMatch.objects.create(
-                                original_case=new_person,
-                                matched_case=person,
-                                confidence_score=round(similarity, 1),
-                                face_distance=distance,
-                                algorithm_used='face_recognition',
-                                status='pending'
-                            )
-                            
-                            matches_found.append({
-                                'ai_match_id': ai_match.id,
-                                'person_id': person.id,
-                                'person_name': person.full_name,
-                                'similarity_percentage': round(similarity, 1),
-                                'status': 'pending',
-                                'photo_url': person.photo.url if person.photo else None,
-                                'confidence_level': ai_match.confidence_level
-                            })
-                            
-                            print(f"AI Match created: {new_person.full_name} → {person.full_name} ({similarity:.1f}%) [ID: {ai_match.id}]")
-                        else:
-                            print(f"AI Match already exists: {new_person.full_name} → {person.full_name}")
-        
+                        matches_found.append({
+                            'matched_case_id': person.id,
+                            'matched_name': person.full_name,
+                            'similarity_percentage': similarity,
+                            'ai_match_id': ai_match.id
+                        })
+                        
+                        print(f"✅ {similarity:.1f}% match: {new_person.full_name} vs {person.full_name} (AI Match ID: {ai_match.id})")
+                        
             except Exception as e:
                 print(f"Error comparing {new_person.full_name} with {person.full_name}: {e}")
                 continue
@@ -153,8 +138,13 @@ def missing_person_list(request):
         serializer = MissingPersonSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         
-        # Create the missing person - this will trigger the signal
+        # Create the missing person and pass user context for signals
         new_person = serializer.save()
+        
+        # 🔥 CRITICAL: Pass current user context for signals
+        new_person._current_user = request.user
+        new_person.save()  # This will trigger signals with user context
+        
         print(f"✅ New missing person case created: {new_person.full_name} (ID: {new_person.id})")
         
         # Prepare response data with success message
@@ -196,6 +186,9 @@ def missing_person_detail(request, pk):
             serializer = MissingPersonSerializer(missing, data=request.data, partial=True, context={'request': request})
             serializer.is_valid(raise_exception=True)
             old_photo = missing.photo
+            
+            # 🔥 CRITICAL: Pass current user context for signals
+            missing._current_user = request.user
             updated_person = serializer.save()
             
             # If photo was added or changed, trigger AI matching via signal
@@ -259,42 +252,51 @@ def add_case_update(request, case_id):
     serializer = CaseUpdateCreateSerializer(data=request.data, context={'case_id': case_id})
 
     if serializer.is_valid():
-        # Create the case update - this will trigger the post_save signal automatically
+        # Create the case update and attach current user info
         update = serializer.save()
+        
+        # 🔥 CRITICAL FIX: Attach current user to the instance for signal access
+        update._current_user = request.user
+        update.save()  # This will trigger the signal with user context
         
         # Update submission status if provided
         if 'submission_status' in request.data:
             old_status = case.submission_status
             new_status = request.data['submission_status']
-            case.submission_status = new_status
-            case.save()
             
-            # Send notification about status change (separate from case update)
-            try:
-                from notifications.signals import send_notification
-                
-                status_message = f"Your case status has been updated from '{old_status.replace('_', ' ').title()}' to '{new_status.replace('_', ' ').title()}'."
-                
-                send_notification(
-                    users=[case.reporter],
-                    message=status_message,
-                    target_instance=case,
-                    notification_type='case_update',
-                    push_title="Case Status Update",
-                    push_body=f"Status changed to {new_status.replace('_', ' ').title()}",
-                    push_data={
-                        'case_id': str(case.id),
-                        'person_name': case.full_name,
-                        'old_status': old_status,
-                        'new_status': new_status,
-                        'action': 'view_case'
-                    }
-                )
-            except Exception as e:
-                print(f"Error sending status change notification: {e}")
+            # 🔥 CRITICAL: Pass current user context for signals
+            case._current_user = request.user
+            case.submission_status = new_status
+            case.save()  # This will trigger submission_status change signal with user context
+            
+            # Only send status change notification if admin is not the reporter
+            if case.reporter != request.user:
+                try:
+                    from notifications.signals import send_notification
+                    
+                    status_message = f"Your case status has been updated from '{old_status.replace('_', ' ').title()}' to '{new_status.replace('_', ' ').title()}'."
+                    
+                    send_notification(
+                        users=[case.reporter],
+                        message=status_message,
+                        target_instance=case,
+                        notification_type='case_update',
+                        push_title="Case Status Update",
+                        push_body=f"Status changed to {new_status.replace('_', ' ').title()}",
+                        push_data={
+                            'case_id': str(case.id),
+                            'person_name': case.full_name,
+                            'old_status': old_status,
+                            'new_status': new_status,
+                            'action': 'view_case'
+                        }
+                    )
+                except Exception as e:
+                    print(f"Error sending status change notification: {e}")
+            else:
+                print(f"Admin {request.user.username} is the reporter - skipping status change notification")
         
-        # DON'T SEND CASE UPDATE NOTIFICATION HERE - it's handled by the signal!
-        print(f"✅ Case update created for case {case.id} - notification sent by signal")
+        print(f"✅ Case update created for case {case.id}")
         
         # Prepare response data
         response_data = serializer.data
@@ -313,6 +315,7 @@ def add_case_update(request, case_id):
         return Response(response_data, status=status.HTTP_201_CREATED)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -364,9 +367,6 @@ def case_detail_with_updates(request, case_id):
     return Response(serializer.data)
 
 
-# Add this to missing/views.py
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def cases_stats(request):
@@ -391,43 +391,39 @@ def cases_stats(request):
         case_stats = filtered_qs.aggregate(
             missing=Count('id', filter=Q(status='missing')),
             found=Count('id', filter=Q(status='found')),
-            investigating=Count('id', filter=Q(status='under_investigation'))
+            under_investigation=Count('id', filter=Q(status='under_investigation'))
         )
         
-        # Gender breakdown
-        gender_stats = filtered_qs.aggregate(
-            male=Count('id', filter=Q(gender='Male')),
-            female=Count('id', filter=Q(gender='Female'))
-        )
+        # Recent stats (last 30 days)
+        from django.utils import timezone
+        from datetime import timedelta
+        thirty_days_ago = timezone.now() - timedelta(days=30)
         
-        # Recent cases (last 30 days)
-        from datetime import datetime, timedelta
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        recent_cases = filtered_qs.filter(date_reported__gte=thirty_days_ago).count()
-        
+        recent_stats = {
+            'total_recent': filtered_qs.filter(date_reported__gte=thirty_days_ago).count(),
+            'recent_active': filtered_qs.filter(
+                date_reported__gte=thirty_days_ago,
+                submission_status='active'
+            ).count(),
+            'recent_found': filtered_qs.filter(
+                date_reported__gte=thirty_days_ago,
+                status='found'
+            ).count()
+        }
+
         return Response({
             'total_cases': total_cases,
-            'submission_status': {
-                'active': submission_stats['active'] or 0,
-                'in_progress': submission_stats['in_progress'] or 0,
-                'closed': submission_stats['closed'] or 0,
-                'rejected': submission_stats['rejected'] or 0
-            },
-            'case_status': {
-                'missing': case_stats['missing'] or 0,
-                'found': case_stats['found'] or 0,
-                'investigating': case_stats['investigating'] or 0
-            },
-            'gender': {
-                'male': gender_stats['male'] or 0,
-                'female': gender_stats['female'] or 0
-            },
-            'recent_cases_30_days': recent_cases,
-            'filters_applied': dict(request.GET),
-            'timestamp': timezone.now().isoformat()
+            'submission_stats': submission_stats,
+            'case_stats': case_stats,
+            'recent_stats': recent_stats,
+            'calculated_at': timezone.now().isoformat()
         })
         
     except Exception as e:
         return Response({
-            'error': f'Failed to fetch stats: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            'error': f'Failed to calculate statistics: {str(e)}',
+            'total_cases': 0,
+            'submission_stats': {},
+            'case_stats': {},
+            'recent_stats': {}
+        }, status=500)

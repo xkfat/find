@@ -122,7 +122,8 @@ def clear_all_notifications(request):
         logger.error(f"Failed to clear notifications for {request.user.username}: {str(e)}")
         return Response({'error': 'Failed to clear notifications'}, 
                        status=status.HTTP_400_BAD_REQUEST)
-
+    
+    
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def send_custom_notification(request):
@@ -130,7 +131,7 @@ def send_custom_notification(request):
     message = request.data.get('message')
     receiver = request.data.get('receiver')
     notification_type = request.data.get('notification_type', 'system')
-    push_title = request.data.get('push_title', 'FindThem')
+    push_title = request.data.get('push_title', '')  # 🔥 FIX: Don't default to 'FindThem'
     
     if not message:
         return Response({'error': 'Message is required.'}, 
@@ -141,6 +142,17 @@ def send_custom_notification(request):
         return Response({'error': 'Invalid notification_type.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
     
+    # 🔥 FIX: If no push_title provided, use appropriate default based on type
+    if not push_title:
+        if notification_type == 'system':
+            push_title = 'FindThem Notification'
+        elif notification_type == 'case_update':
+            push_title = 'Case Update'
+        elif notification_type == 'missing_person':
+            push_title = 'New Missing Person'
+        else:
+            push_title = 'FindThem'
+    
     try:
         if receiver == 'all':
             users = BasicUser.objects.all()
@@ -150,13 +162,15 @@ def send_custom_notification(request):
                 users=users,
                 message=message,
                 notification_type=notification_type,
-                push_title=push_title
+                push_title=push_title,  # 🔥 Admin's custom title
+                push_body=message       # 🔥 FIX: Add push_body for push notifications
             )
             
-            logger.info(f"Admin {request.user.username} sent notification to all {user_count} users")
+            logger.info(f"Admin {request.user.username} sent '{push_title}' notification to all {user_count} users")
             return Response({
                 'message': f'Notification sent to all {user_count} users',
-                'recipients': user_count
+                'recipients': user_count,
+                'push_title': push_title  # Return the title used
             }, status=status.HTTP_201_CREATED)
         
         elif receiver == 'staff':
@@ -167,13 +181,15 @@ def send_custom_notification(request):
                 users=users,
                 message=message,
                 notification_type=notification_type,
-                push_title=push_title
+                push_title=push_title,  # 🔥 Admin's custom title
+                push_body=message       # 🔥 FIX: Add push_body for push notifications
             )
             
-            logger.info(f"Admin {request.user.username} sent notification to {user_count} staff users")
+            logger.info(f"Admin {request.user.username} sent '{push_title}' notification to {user_count} staff users")
             return Response({
                 'message': f'Notification sent to {user_count} staff users',
-                'recipients': user_count
+                'recipients': user_count,
+                'push_title': push_title  # Return the title used
             }, status=status.HTTP_201_CREATED)
         
         else:
@@ -200,21 +216,23 @@ def send_custom_notification(request):
                 users=users,
                 message=message,
                 notification_type=notification_type,
-                push_title=push_title
+                push_title=push_title,  # 🔥 Admin's custom title
+                push_body=message       # 🔥 FIX: Add push_body for push notifications
             )
             
-            logger.info(f"Admin {request.user.username} sent notification to {user_count} specific users")
+            logger.info(f"Admin {request.user.username} sent '{push_title}' notification to {user_count} specific users")
             return Response({
                 'message': f'Notification sent to {user_count} users',
                 'recipients': user_count,
-                'user_ids': list(users.values_list('id', flat=True))
+                'user_ids': list(users.values_list('id', flat=True)),
+                'push_title': push_title  # Return the title used
             }, status=status.HTTP_201_CREATED)
             
     except Exception as e:
         logger.error(f"Failed to send custom notification: {str(e)}")
         return Response({'error': f'Failed to send notification: {str(e)}'}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def notification_stats(request):

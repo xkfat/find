@@ -68,6 +68,7 @@ def process_face_matching_background(person_id):
     except Exception as e:
         print(f"❌ Background face matching error: {e}")
 
+
 @receiver(pre_save, sender=MissingPerson)
 def _cache_old_submission_status(sender, instance, **kwargs):
     if not instance.pk:
@@ -75,17 +76,18 @@ def _cache_old_submission_status(sender, instance, **kwargs):
     else:
         instance._old_submission_status = MissingPerson.objects.get(pk=instance.pk).submission_status
 
+
 @receiver(post_save, sender=MissingPerson)
 def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
     defaults = {
         'active':      "We start investigating your case.",
         'in_progress': "We're looking and verifying your case.",
         'closed':      "We're glad your loved one has been found. Thank you for trusting us.",
-        'rejected':    "We couldn’t accept your case. Please make sure it’s real before submitting.",
+        'rejected':    "We couldn't accept your case. Please make sure it's real before submitting.",
     }
 
     if created:
-        # Create initial case updates
+        # Create initial case updates for new cases
         CaseUpdate.objects.create(
             case=instance,
             message="Thank you for submitting your case, We're here to help and will review your case shortly."
@@ -119,10 +121,13 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
     new_status = instance.submission_status
 
     if old_status != new_status and new_status in defaults:
+        # Create status update message for the reporter
         update = CaseUpdate.objects.create(
             case=instance,
             message=defaults[new_status]
         )
+        
+        # Send case status change signal (for case updates to reporter)
         case_status_changed.send(
             sender=MissingPerson,
             instance=instance,
@@ -130,3 +135,59 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
             new_status=new_status,
             update=update,
         )
+        
+        # 🔥 CRITICAL FIX: When status changes to 'active', broadcast to all users
+        if new_status == 'active' and old_status != 'active':
+            print(f"🚨 Broadcasting new missing person to all users: {instance.full_name}")
+            
+            # Import here to avoid circular imports
+            from notifications.signals import send_notification
+            from django.contrib.auth import get_user_model
+            
+            User = get_user_model()
+            
+            # Get current user context if available (to exclude admin if they're the reporter)
+            current_user = getattr(instance, '_current_user', None)
+            
+            # Send to all non-staff users (exclude admin who made the change if they're the reporter)
+            all_users = User.objects.filter(is_staff=False)
+            
+            broadcast_message = f"New missing person: \"{instance.first_name} {instance.last_name}\". Click to view details and help if you can."
+            
+            send_notification(
+                users=all_users,
+                message=broadcast_message,
+                target_instance=instance,
+                notification_type='missing_person',
+                push_title="New Missing Person",
+                push_body=f"{instance.first_name} {instance.last_name} has been reported missing",
+                push_data={
+                    'person_name': f"{instance.first_name} {instance.last_name}",
+                    'case_id': str(instance.pk),
+                    'action': 'view_case'
+                }
+            )
+            
+            print(f"✅ Broadcasted new missing person notification to {all_users.count()} users")
+            
+            # Send admin notification (exclude admin who made the change)
+            admin_users = User.objects.filter(is_staff=True)
+            if current_user and current_user.is_staff:
+                admin_users = admin_users.exclude(id=current_user.id)
+            
+            if admin_users.exists():
+                admin_message = f"📢 Case \"{instance.first_name} {instance.last_name}\" (ID {instance.pk}) is now ACTIVE and visible to users."
+                
+                send_notification(
+                    users=admin_users,
+                    message=admin_message,
+                    target_instance=instance,
+                    notification_type='missing_person',
+                    push_title="Case Activated",
+                    push_data={
+                        'person_name': f"{instance.first_name} {instance.last_name}",
+                        'case_id': str(instance.pk),
+                        'admin_alert': 'true',
+                        'action': 'admin_review'
+                    }
+                )
