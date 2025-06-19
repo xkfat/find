@@ -232,7 +232,8 @@ def case_updates(request, pk):
 @permission_classes([IsAuthenticated])
 def add_case_update(request, case_id):
     """
-    Enhanced case update endpoint that handles both manual and auto updates
+    Case update endpoint that handles both manual and auto updates
+    (without sending notifications for status changes)
     """
     if not request.user.is_staff:
         return Response(
@@ -255,46 +256,18 @@ def add_case_update(request, case_id):
         # Create the case update and attach current user info
         update = serializer.save()
         
-        # 🔥 CRITICAL FIX: Attach current user to the instance for signal access
+        # Attach current user to the instance for signal access
         update._current_user = request.user
         update.save()  # This will trigger the signal with user context
         
-        # Update submission status if provided
+        # Update submission status if provided (without sending notifications)
         if 'submission_status' in request.data:
-            old_status = case.submission_status
             new_status = request.data['submission_status']
             
-            # 🔥 CRITICAL: Pass current user context for signals
+            # Pass current user context for signals
             case._current_user = request.user
             case.submission_status = new_status
             case.save()  # This will trigger submission_status change signal with user context
-            
-            # Only send status change notification if admin is not the reporter
-            if case.reporter != request.user:
-                try:
-                    from notifications.signals import send_notification
-                    
-                    status_message = f"Your case status has been updated from '{old_status.replace('_', ' ').title()}' to '{new_status.replace('_', ' ').title()}'."
-                    
-                    send_notification(
-                        users=[case.reporter],
-                        message=status_message,
-                        target_instance=case,
-                        notification_type='case_update',
-                        push_title="Case Status Update",
-                        push_body=f"Status changed to {new_status.replace('_', ' ').title()}",
-                        push_data={
-                            'case_id': str(case.id),
-                            'person_name': case.full_name,
-                            'old_status': old_status,
-                            'new_status': new_status,
-                            'action': 'view_case'
-                        }
-                    )
-                except Exception as e:
-                    print(f"Error sending status change notification: {e}")
-            else:
-                print(f"Admin {request.user.username} is the reporter - skipping status change notification")
         
         print(f"✅ Case update created for case {case.id}")
         
@@ -302,7 +275,7 @@ def add_case_update(request, case_id):
         response_data = serializer.data
         response_data.update({
             'success': True,
-            'message': f'Case update sent successfully to {case.full_name}\'s reporter ({case.reporter.username})',
+            'message': f'Case update processed successfully for {case.full_name}',
             'case_info': {
                 'id': case.id,
                 'full_name': case.full_name,
@@ -314,7 +287,11 @@ def add_case_update(request, case_id):
 
         return Response(response_data, status=status.HTTP_201_CREATED)
     
+
+
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 @api_view(['GET'])
