@@ -48,7 +48,7 @@ def process_face_matching_background(person_id):
                 User = get_user_model()
                 admin_users = User.objects.filter(is_staff=True)
                 
-                message = f"🔍 {len(face_matches)} potential face matches found for {person.full_name}. Please review."
+                message = f"{len(face_matches)} potential face matches found for {person.full_name}. Please review."
                 
                 send_notification(
                     users=admin_users,
@@ -175,19 +175,4 @@ def _handle_case_updates_and_notifications(sender, instance, created, **kwargs):
             if current_user and current_user.is_staff:
                 admin_users = admin_users.exclude(id=current_user.id)
             
-            if admin_users.exists():
-                admin_message = f"📢 Case \"{instance.first_name} {instance.last_name}\" (ID {instance.pk}) is now ACTIVE and visible to users."
-                
-                send_notification(
-                    users=admin_users,
-                    message=admin_message,
-                    target_instance=instance,
-                    notification_type='missing_person',
-                    push_title="Case Activated",
-                    push_data={
-                        'person_name': f"{instance.first_name} {instance.last_name}",
-                        'case_id': str(instance.pk),
-                        'admin_alert': 'true',
-                        'action': 'admin_review'
-                    }
-                )
+            

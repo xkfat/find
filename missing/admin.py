@@ -59,7 +59,7 @@ class MissingPersonAdmin(admin.ModelAdmin):
                 'change_submission_to_in_in_progress',
                 'change_submission_to_closed',
                 'change_submission_to_rejected', 
- 
+                'change_submission_to_in_progress'
  
 
                
@@ -100,3 +100,16 @@ class MissingPersonAdmin(admin.ModelAdmin):
     def change_submission_to_rejected(self, request, queryset):
         updated = queryset.update(submission_status='rejected')
         messages.success(request, f"{updated} case(s) submission status set to Rejected.")
+
+    @admin.action(description='Change submission status to In Progress')
+    def change_submission_to_active(self, request, queryset):
+        updated = queryset.update(submission_status='in_progress')
+        messages.success(request, f"{updated} case(s) submission status set to in progress.")
+
+
+
+
+@admin.register(CaseUpdate)
+class CaseUpdateAdmin(admin.ModelAdmin):
+    list_display = ['id', 'case', 'message']
+    search_fields = ['message', 'case__first_name', 'case__last_name']

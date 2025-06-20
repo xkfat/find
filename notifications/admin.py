@@ -12,8 +12,7 @@ class NotificationsAdmin(admin.ModelAdmin):
     list_filter = ('is_read', 'date_created', 'user__username')
     search_fields = ('user__username', 'message')
 
-
-    actions = ['send_to_all_users']
+    actions = ['send_to_all_users', 'mark_all_as_read', 'mark_all_as_unread']
     
     def send_to_all_users(self, request, queryset):
         if queryset.count() != 1:
@@ -34,6 +33,23 @@ class NotificationsAdmin(admin.ModelAdmin):
         self.message_user(request, f"Successfully sent notification to {count} additional users", messages.SUCCESS)
     send_to_all_users.short_description = "Send selected notification to all users"
     
+    def mark_all_as_read(self, request, queryset):
+        """Mark selected notifications as read"""
+        updated_count = queryset.filter(is_read=False).update(is_read=True)
+        if updated_count == 0:
+            self.message_user(request, "All selected notifications were already marked as read", messages.INFO)
+        else:
+            self.message_user(request, f"Successfully marked {updated_count} notifications as read", messages.SUCCESS)
+    mark_all_as_read.short_description = "Mark selected notifications as read"
+    
+    def mark_all_as_unread(self, request, queryset):
+        """Mark selected notifications as unread"""
+        updated_count = queryset.filter(is_read=True).update(is_read=False)
+        if updated_count == 0:
+            self.message_user(request, "All selected notifications were already marked as unread", messages.INFO)
+        else:
+            self.message_user(request, f"Successfully marked {updated_count} notifications as unread", messages.SUCCESS)
+    mark_all_as_unread.short_description = "Mark selected notifications as unread"
 
     def view_message_button(self, obj):
         url = reverse('admin:notifications_notification_change', args=[obj.pk])
@@ -52,18 +68,14 @@ class NotificationsAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
     
-
     def view_message_view(self, request, pk):
         notification = Notification.objects.get(pk=pk)
         return HttpResponse(notification.message)
-    
-
 
     def get_fields(self, request, obj=None):
         if obj:
             return ('user', 'message', 'is_read', 'date_created')
         return ('user', 'message')
-    
 
     def get_readonly_fields(self, request, obj=None):
         if obj:  
@@ -78,8 +90,6 @@ class NotificationsAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return True
-    
-
 
     #Customize (might change later):
     def change_view(self, request, object_id, form_url='', extra_context=None):

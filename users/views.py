@@ -234,6 +234,7 @@ def firebase_auth_view(request):
         email = request.data.get('email', '')
         name = request.data.get('name', '')
         phone_number = request.data.get('phone_number', '')
+        photo_url = request.data.get('photo_url', '') 
         
         if not id_token:
             return Response({'error': 'No ID token provided'}, status=status.HTTP_400_BAD_REQUEST)
@@ -284,6 +285,55 @@ def firebase_auth_view(request):
                 user.role = User.ROLE_USER
                 
                 user.save()
+                if photo_url:
+                    try:
+                        import requests
+                        from django.core.files.base import ContentFile
+                        import uuid
+                        
+                        response = requests.get(photo_url, timeout=10)
+                        if response.status_code == 200:
+                            # Generate a unique filename
+                            file_extension = 'jpg'  # Default to jpg
+                            if 'image/png' in response.headers.get('content-type', ''):
+                                file_extension = 'png'
+                            
+                            filename = f"{user.username}_{uuid.uuid4().hex[:8]}.{file_extension}"
+                            
+                            # Save the profile photo
+                            user.profile_photo.save(
+                                filename,
+                                ContentFile(response.content),
+                                save=True
+                            )
+                            print(f"✅ Profile photo saved for user {user.username}")
+                    except Exception as photo_error:
+                        print(f"❌ Error saving profile photo for {user.username}: {photo_error}")
+            
+            # ✅ Also handle photo for EXISTING users (in case they didn't have one before)
+            else:
+                if photo_url and not user.profile_photo:
+                    try:
+                        import requests
+                        from django.core.files.base import ContentFile
+                        import uuid
+                        
+                        response = requests.get(photo_url, timeout=10)
+                        if response.status_code == 200:
+                            file_extension = 'jpg'
+                            if 'image/png' in response.headers.get('content-type', ''):
+                                file_extension = 'png'
+                            
+                            filename = f"{user.username}_{uuid.uuid4().hex[:8]}.{file_extension}"
+                            
+                            user.profile_photo.save(
+                                filename,
+                                ContentFile(response.content),
+                                save=True
+                            )
+                            print(f"✅ Profile photo added to existing user {user.username}")
+                    except Exception as photo_error:
+                        print(f"❌ Error saving profile photo for existing user {user.username}: {photo_error}")
 
         else: 
             try: 

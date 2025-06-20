@@ -237,8 +237,8 @@ def notify_new_missing_person(sender, instance, created, **kwargs):
     
     if admin_users.exists():
         admin_msg = (
-            f"📢 New case \"{instance.first_name} {instance.last_name}\" "
-            f"(ID {instance.pk}) submitted by {instance.reporter.username if instance.reporter else 'Unknown'}."
+            f"New case \"{instance.first_name} {instance.last_name}\" "
+            f" submitted by {instance.reporter.username if instance.reporter else 'Unknown'}."
         )
         
         send_notification(
@@ -311,7 +311,7 @@ def notify_new_report(sender, instance, **kwargs):
         return
 
     report_msg = (
-        f"📝 New report (ID {instance.pk}) on "
+        f"New report on "
         f"\"{instance.missing_person.first_name} {instance.missing_person.last_name}\" "
         f"submitted by {reporter_name}."
     )
