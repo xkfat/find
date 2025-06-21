@@ -180,6 +180,10 @@ class DashboardStatsView(APIView):
             active_cases = MissingPerson.objects.filter(submission_status='active').count()
             pending_cases = MissingPerson.objects.filter(submission_status='in_progress').count()  # Fixed: now correctly uses submission_status
             found_cases = MissingPerson.objects.filter(status='found').count()
+
+            missing_cases = MissingPerson.objects.filter(status='missing').count()
+            investigating_cases = MissingPerson.objects.filter(status='under_investigation').count()
+            
             
             total_reports = Report.objects.count()
             unverified_reports = Report.objects.filter(report_status='unverified').count()  # Fixed: now correctly uses report_status
@@ -203,6 +207,8 @@ class DashboardStatsView(APIView):
                 'active_cases': active_cases,
                 'pending_cases': pending_cases,  # Cases with submission_status = 'in_progress'
                 'found_cases': found_cases,
+                'missing_cases': missing_cases,           
+                'investigating_cases': investigating_cases, 
                 'unverified_reports': unverified_reports,  # Reports with report_status = 'unverified'
                 'verified_reports': verified_reports,
                 'total_reports': total_reports,
