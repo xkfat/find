@@ -2,7 +2,6 @@ from django.db import models
 from django.conf import settings
 
 class LocationRequest(models.Model):
-    """Request from one user to another to establish location sharing"""
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('accepted', 'Accepted'),
@@ -36,7 +35,6 @@ class LocationRequest(models.Model):
 
 
 class LocationSharing(models.Model):
-    """Represents a bidirectional location sharing relationship between two users"""
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
@@ -47,8 +45,7 @@ class LocationSharing(models.Model):
         on_delete=models.CASCADE, 
         related_name='shared_by'
     )
-    # NEW: Individual sharing control per friend
-    can_see_me = models.BooleanField(default=True)  # Whether this friend can see my location
+    can_see_me = models.BooleanField(default=True)  
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

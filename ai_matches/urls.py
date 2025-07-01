@@ -6,6 +6,6 @@ urlpatterns = [
     path('stats/', views.ai_match_stats, name='ai-matches-stats'),
     path('<int:match_id>/', views.ai_match_detail, name='ai-match-detail'),
     path('<int:match_id>/review/', views.review_ai_match, name='ai-match-review'),
-        path('<int:match_id>/delete/', views.delete_ai_match, name='ai-match-delete'),  # ← ADD THIS
+        path('<int:match_id>/delete/', views.delete_ai_match, name='ai-match-delete'),  
 
 ]

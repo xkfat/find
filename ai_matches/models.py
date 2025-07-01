@@ -32,12 +32,11 @@ class AIMatch(models.Model):
         default='pending'
     )
     
-    # AI Processing Info
-    algorithm_used = models.CharField(max_length=100, default='face_recognition')
+    #algorithm_used = models.CharField(max_length=100, default='face_recognition')
     face_distance = models.FloatField(null=True, blank=True)
     processing_date = models.DateTimeField(auto_now_add=True)
     
-    # Admin Review Info
+    """
     reviewed_by = models.ForeignKey(
         User, 
         on_delete=models.SET_NULL, 
@@ -45,10 +44,10 @@ class AIMatch(models.Model):
         blank=True,
         related_name='reviewed_ai_matches'
     )
+    """
     review_date = models.DateTimeField(null=True, blank=True)
-    admin_notes = models.TextField(blank=True)
+    #admin_notes = models.TextField(blank=True)
     
-    # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -61,7 +60,6 @@ class AIMatch(models.Model):
     
     @property
     def confidence_level(self):
-        # Handle None/null confidence_score
         if self.confidence_score is None:
             return 'unknown'
         if self.confidence_score >= 90:
@@ -72,25 +70,22 @@ class AIMatch(models.Model):
             return 'low'
     
     def confirm_match(self, admin_user, notes=""):
-        """Mark match as confirmed and update original case status"""
         self.status = 'confirmed'
-        self.reviewed_by = admin_user
+       # self.reviewed_by = admin_user
         self.review_date = timezone.now()
-        self.admin_notes = notes
+        #self.admin_notes = notes
         self.save()
         
-        # Update original case status to found
         self.original_case.status = 'found'
         self.original_case.save()
         
         return self
     
     def reject_match(self, admin_user, notes=""):
-        """Mark match as rejected"""
         self.status = 'rejected'
-        self.reviewed_by = admin_user
+       # self.reviewed_by = admin_user
         self.review_date = timezone.now()
-        self.admin_notes = notes
+       # self.admin_notes = notes
         self.save()
         
         return self

@@ -5,7 +5,6 @@ from django.urls import reverse
 from django.contrib import messages
 from .models import AIMatch
 
-# Custom filter for confidence levels
 class ConfidenceLevelFilter(admin.SimpleListFilter):
     title = 'Confidence Level'
     parameter_name = 'confidence_level'
@@ -30,12 +29,14 @@ class ConfidenceLevelFilter(admin.SimpleListFilter):
 class AIMatchAdmin(admin.ModelAdmin):
     list_display = [
         'id', 'original_case_link', 'matched_case_link', 'confidence_score', 
-        'confidence_level', 'status', 'reviewed_by', 'processing_date'
+        'confidence_level', 'status',
+         # 'reviewed_by', 
+         'processing_date'
     ]
     list_filter = [
         'status', 
         'processing_date', 
-        'reviewed_by',
+      #  'reviewed_by',
         ConfidenceLevelFilter,
     ]
     search_fields = [
@@ -45,19 +46,16 @@ class AIMatchAdmin(admin.ModelAdmin):
     readonly_fields = [
         'processing_date', 'updated_at', 'confidence_level', 
         'original_case', 'matched_case', 'confidence_score',
-        'face_distance', 'algorithm_used'
+        'face_distance', 
+        #'algorithm_used'
     ]
     
     fieldsets = (
         ('Match Information', {
             'fields': ('original_case', 'matched_case', 'confidence_score', 'confidence_level')
         }),
-        ('AI Processing', {
-            'fields': ('algorithm_used', 'face_distance', 'processing_date')
-        }),
-        ('Review Information', {
-            'fields': ('status', 'reviewed_by', 'review_date', 'admin_notes')
-        }),
+       
+       
         ('Metadata', {
             'fields': ('updated_at',),
             'classes': ('collapse',)
@@ -85,17 +83,15 @@ class AIMatchAdmin(admin.ModelAdmin):
     matched_case_link.short_description = 'Matched Case'
     
     def get_queryset(self, request):
-        """Optimize queryset with select_related"""
         return super().get_queryset(request).select_related(
-            'original_case', 'matched_case', 'reviewed_by'
+            'original_case', 'matched_case', 
+            #'reviewed_by'
         )
     
     def has_add_permission(self, request):
-        """Disable manual creation of AI matches"""
         return False
     
     def add_view(self, request, form_url='', extra_context=None):
-        """Redirect attempts to create AI matches manually"""
         messages.warning(
             request, 
             "AI Matches are created automatically when missing persons are added. "
@@ -130,7 +126,6 @@ class AIMatchAdmin(admin.ModelAdmin):
             self.message_user(request, "No pending matches were selected.")
     
     def get_readonly_fields(self, request, obj=None):
-        """Make most fields readonly for existing objects"""
-        if obj:  # editing an existing object
+        if obj:  
             return self.readonly_fields + ['created_at']
         return self.readonly_fields
